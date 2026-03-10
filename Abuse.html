@@ -65,7 +65,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 </div>
 <div class="wrap hidden" id="appWrap">
 <div class="card"><h1>By @Neo19867</h1><p style="color:var(--muted)">Галка «Выполнен» убирает день из активных для распределения остатка.</p></div>
-<div class="card hidden" id="adminCard"><h2>Статистика пользователей</h2><div class="stats">
+<div class="card hidden" id="adminCard"><h2>Статистика пользователей</h2><div class="label2">Локальная статистика этого браузера (режим GitHub Pages без сервера).</div><div class="stats" style="margin-top:8px">
 <div class="stat"><div class="label2">Всего пользователей</div><div class="value" id="adminTotalUsers">0</div></div>
 <div class="stat"><div class="label2">Логинов сегодня</div><div class="value" id="adminTodayLogins">0</div></div>
 <div class="stat"><div class="label2">Всего логинов</div><div class="value" id="adminTotalLogins">0</div></div>
@@ -98,9 +98,11 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <script>
 const K1 = "courierPlan_rows_v14";
 const K2 = "courierPlan_settings_v14";
+const K3 = "courierPlan_auth_v1";
+const K4 = "courierPlan_auth_stats_v1";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "neo19867_auth_bot"; // Замените на username вашего Telegram-бота
-const AUTH_API_BASE = ""; // Если API на другом домене, укажите https://your-domain
+const ADMIN_TG_USERNAME = "Neo19867";
 let isPlannerBound = false;
 
 const D = {
@@ -463,14 +465,6 @@ function setupMatrixBackground() {
   setInterval(draw, 42);
 }
 
-function api(path, opts = {}) {
-  return fetch(`${AUTH_API_BASE}${path}`, {
-    credentials: "include",
-    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
-    ...opts,
-  });
-}
-
 function setAuthStatus(msg, isError = false) {
   const el = $("authStatus");
   if (!el) return;
@@ -478,23 +472,71 @@ function setAuthStatus(msg, isError = false) {
   el.style.color = isError ? "#ff7d7d" : "var(--muted)";
 }
 
-function renderAdminStats(stats) {
-  $("adminTotalUsers").textContent = stats.total_users || 0;
-  $("adminTodayLogins").textContent = stats.today_logins || 0;
-  $("adminTotalLogins").textContent = stats.total_logins || 0;
-  const users = Array.isArray(stats.recent_users) ? stats.recent_users : [];
-  $("adminUsers").innerHTML = users.length
-    ? users.map((u) => `<div class="admin-user-row"><span>@${u.username || "no_username"} (${u.id})</span><span>${u.last_login_at || "-"}</span></div>`).join("")
-    : `<div class="label2">Пока нет данных.</div>`;
+function isoNow() {
+  return new Date().toISOString();
 }
 
-async function loadAdminStats() {
+function dayKey(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+function loadAuthSession() {
   try {
-    const r = await api("/api/admin/stats");
-    if (!r.ok) return;
-    const j = await r.json();
-    renderAdminStats(j);
+    return JSON.parse(localStorage.getItem(K3) || "null");
+  } catch { return null; }
+}
+
+function saveAuthSession(s) {
+  localStorage.setItem(K3, JSON.stringify(s));
+}
+
+function loadAuthStats() {
+  try {
+    const x = JSON.parse(localStorage.getItem(K4) || "null");
+    if (x && typeof x === "object") return x;
   } catch {}
+  return { users: {}, logins: [] };
+}
+
+function saveAuthStats(x) {
+  localStorage.setItem(K4, JSON.stringify(x));
+}
+
+function isAdminUser(username) {
+  return String(username || "").replace(/^@/, "").toLowerCase() === ADMIN_TG_USERNAME.replace(/^@/, "").toLowerCase();
+}
+
+function registerLocalLogin(user) {
+  const stats = loadAuthStats();
+  const uid = String(user.id || "");
+  const prev = stats.users[uid] || {};
+  stats.users[uid] = {
+    id: user.id,
+    username: user.username || "",
+    first_name: user.first_name || "",
+    registered_at: prev.registered_at || isoNow(),
+    last_login_at: isoNow(),
+    login_count: Number(prev.login_count || 0) + 1,
+  };
+  stats.logins.push({ id: user.id, at: isoNow() });
+  if (stats.logins.length > 5000) stats.logins = stats.logins.slice(-5000);
+  saveAuthStats(stats);
+}
+
+function renderAdminStats() {
+  const stats = loadAuthStats();
+  const users = Object.values(stats.users || {}).sort((a, b) => new Date(b.last_login_at || 0) - new Date(a.last_login_at || 0));
+  const today = dayKey();
+  const todayLogins = (stats.logins || []).filter((x) => String(x.at || "").startsWith(today)).length;
+  $("adminTotalUsers").textContent = users.length;
+  $("adminTodayLogins").textContent = todayLogins;
+  $("adminTotalLogins").textContent = (stats.logins || []).length;
+  $("adminUsers").innerHTML = users.length
+    ? users.slice(0, 30).map((u) => `<div class="admin-user-row"><span>@${u.username || "no_username"} (${u.id})</span><span>${u.last_login_at || "-"}</span></div>`).join("")
+    : `<div class="label2">Пока нет данных.</div>`;
 }
 
 function showAuthorizedUi(session) {
@@ -502,34 +544,31 @@ function showAuthorizedUi(session) {
   $("appWrap").classList.remove("hidden");
   if (session && session.is_admin) {
     $("adminCard").classList.remove("hidden");
-    loadAdminStats();
+    renderAdminStats();
   } else {
     $("adminCard").classList.add("hidden");
   }
 }
 
-window.onTelegramAuth = async (user) => {
-  setAuthStatus("Проверяю вход...");
-  try {
-    const r = await api("/api/auth/telegram", {
-      method: "POST",
-      body: JSON.stringify(user),
-    });
-    if (!r.ok) {
-      setAuthStatus("Вход отклонён сервером.", true);
-      return;
-    }
-    const j = await r.json();
-    if (!j.authenticated) {
-      setAuthStatus("Авторизация не подтверждена.", true);
-      return;
-    }
-    setAuthStatus("Вход выполнен.");
-    showAuthorizedUi(j);
-    initPlanner();
-  } catch {
-    setAuthStatus("Сервер авторизации недоступен.", true);
+window.onTelegramAuth = (user) => {
+  if (!user || !user.id) {
+    setAuthStatus("Не удалось получить данные Telegram.", true);
+    return;
   }
+  registerLocalLogin(user);
+  const session = {
+    authenticated: true,
+    is_admin: isAdminUser(user.username),
+    user: {
+      id: user.id,
+      username: user.username || "",
+      first_name: user.first_name || "",
+    },
+  };
+  saveAuthSession(session);
+  setAuthStatus("Вход выполнен.");
+  showAuthorizedUi(session);
+  initPlanner();
 };
 
 function mountTelegramWidget() {
@@ -551,14 +590,10 @@ function mountTelegramWidget() {
   box.appendChild(sc);
 }
 
-async function checkSession() {
-  try {
-    const r = await api("/api/session");
-    if (!r.ok) return { authenticated: false };
-    return await r.json();
-  } catch {
-    return { authenticated: false };
-  }
+function checkSession() {
+  const s = loadAuthSession();
+  if (!s || !s.authenticated || !s.user || !s.user.id) return { authenticated: false };
+  return s;
 }
 
 function bindPlannerEvents() {
@@ -609,9 +644,9 @@ function initPlanner() {
   render();
 }
 
-async function bootstrap() {
+function bootstrap() {
   setupMatrixBackground();
-  const session = await checkSession();
+  const session = checkSession();
   if (session && session.authenticated) {
     showAuthorizedUi(session);
     initPlanner();
