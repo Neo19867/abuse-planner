@@ -1,0 +1,35 @@
+name: Sync Abuse to Index
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "Abuse.html"
+      - ".github/workflows/sync-index.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync-index:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Sync files
+        run: cp Abuse.html index.html
+
+      - name: Commit changes
+        run: |
+          if git diff --quiet -- index.html; then
+            echo "No changes in index.html"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          git commit -m "chore: sync index.html from Abuse.html"
+          git push
