@@ -10,6 +10,14 @@
 body{margin:0;font-family:Consolas,"Courier New",monospace;background:#000;color:var(--text);position:relative}
 #matrix-bg{position:fixed;inset:0;z-index:0;opacity:.36;pointer-events:none}
 .wrap{max-width:1400px;margin:0 auto;padding:16px;position:relative;z-index:1}
+.hidden{display:none!important}
+.auth-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;position:relative;z-index:2}
+.auth-card{width:min(520px,100%);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 0 24px rgba(22,255,95,.12)}
+.auth-title{margin:0 0 8px;font-size:24px}
+.auth-status{margin-top:10px;color:var(--muted);min-height:20px}
+.admin-users{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px;background:rgba(0,18,7,.6)}
+.admin-user-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed rgba(31,166,75,.35)}
+.admin-user-row:last-child{border-bottom:none}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;backdrop-filter:blur(2px);box-shadow:0 0 24px rgba(22,255,95,.12)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
 label{display:block;color:var(--muted);font-size:12px;margin-bottom:5px}
@@ -46,8 +54,22 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 }
 </style>
 </head>
-<body><canvas id="matrix-bg"></canvas><div class="wrap">
+<body><canvas id="matrix-bg"></canvas>
+<div id="authGate" class="auth-screen">
+  <div class="auth-card">
+    <h2 class="auth-title">Вход через Telegram</h2>
+    <div style="color:var(--muted)">Доступ к планировщику только для авторизованных пользователей.</div>
+    <div id="tgLoginWidget" style="margin-top:12px"></div>
+    <div class="auth-status" id="authStatus"></div>
+  </div>
+</div>
+<div class="wrap hidden" id="appWrap">
 <div class="card"><h1>By @Neo19867</h1><p style="color:var(--muted)">Галка «Выполнен» убирает день из активных для распределения остатка.</p></div>
+<div class="card hidden" id="adminCard"><h2>Статистика пользователей</h2><div class="stats">
+<div class="stat"><div class="label2">Всего пользователей</div><div class="value" id="adminTotalUsers">0</div></div>
+<div class="stat"><div class="label2">Логинов сегодня</div><div class="value" id="adminTodayLogins">0</div></div>
+<div class="stat"><div class="label2">Всего логинов</div><div class="value" id="adminTotalLogins">0</div></div>
+</div><div style="margin-top:10px" class="label2">Последние пользователи</div><div id="adminUsers" class="admin-users"></div></div>
 <div class="card"><h2>Настройки</h2><div class="grid">
 <div><label>Целевой коэффициент</label><input id="target" type="number" step="0.01" value="1.6"></div>
 <div><label>Доход за час</label><input id="rate" type="number" value="400"></div>
@@ -77,6 +99,9 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 const K1 = "courierPlan_rows_v14";
 const K2 = "courierPlan_settings_v14";
 const $ = (id) => document.getElementById(id);
+const TG_BOT_USERNAME = "neo19867_auth_bot"; // Замените на username вашего Telegram-бота
+const AUTH_API_BASE = ""; // Если API на другом домене, укажите https://your-domain
+let isPlannerBound = false;
 
 const D = {
   target: 1.6,
@@ -438,15 +463,107 @@ function setupMatrixBackground() {
   setInterval(draw, 42);
 }
 
-function init() {
-  const s = loadSet();
-  writeSet(s);
-  setupMatrixBackground();
-  if (!localStorage.getItem(K1)) {
-    const a = empty();
-    a.forEach((x) => { x.pr = 10; x.pv = 2; });
-    saveRows(a);
+function api(path, opts = {}) {
+  return fetch(`${AUTH_API_BASE}${path}`, {
+    credentials: "include",
+    headers: { "Content-Type": "application/json", ...(opts.headers || {}) },
+    ...opts,
+  });
+}
+
+function setAuthStatus(msg, isError = false) {
+  const el = $("authStatus");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.style.color = isError ? "#ff7d7d" : "var(--muted)";
+}
+
+function renderAdminStats(stats) {
+  $("adminTotalUsers").textContent = stats.total_users || 0;
+  $("adminTodayLogins").textContent = stats.today_logins || 0;
+  $("adminTotalLogins").textContent = stats.total_logins || 0;
+  const users = Array.isArray(stats.recent_users) ? stats.recent_users : [];
+  $("adminUsers").innerHTML = users.length
+    ? users.map((u) => `<div class="admin-user-row"><span>@${u.username || "no_username"} (${u.id})</span><span>${u.last_login_at || "-"}</span></div>`).join("")
+    : `<div class="label2">Пока нет данных.</div>`;
+}
+
+async function loadAdminStats() {
+  try {
+    const r = await api("/api/admin/stats");
+    if (!r.ok) return;
+    const j = await r.json();
+    renderAdminStats(j);
+  } catch {}
+}
+
+function showAuthorizedUi(session) {
+  $("authGate").classList.add("hidden");
+  $("appWrap").classList.remove("hidden");
+  if (session && session.is_admin) {
+    $("adminCard").classList.remove("hidden");
+    loadAdminStats();
+  } else {
+    $("adminCard").classList.add("hidden");
   }
+}
+
+window.onTelegramAuth = async (user) => {
+  setAuthStatus("Проверяю вход...");
+  try {
+    const r = await api("/api/auth/telegram", {
+      method: "POST",
+      body: JSON.stringify(user),
+    });
+    if (!r.ok) {
+      setAuthStatus("Вход отклонён сервером.", true);
+      return;
+    }
+    const j = await r.json();
+    if (!j.authenticated) {
+      setAuthStatus("Авторизация не подтверждена.", true);
+      return;
+    }
+    setAuthStatus("Вход выполнен.");
+    showAuthorizedUi(j);
+    initPlanner();
+  } catch {
+    setAuthStatus("Сервер авторизации недоступен.", true);
+  }
+};
+
+function mountTelegramWidget() {
+  const box = $("tgLoginWidget");
+  if (!box) return;
+  box.innerHTML = "";
+  if (!TG_BOT_USERNAME || TG_BOT_USERNAME === "neo19867_auth_bot") {
+    setAuthStatus("Укажите username Telegram-бота в TG_BOT_USERNAME.", true);
+    return;
+  }
+  const sc = document.createElement("script");
+  sc.src = "https://telegram.org/js/telegram-widget.js?22";
+  sc.async = true;
+  sc.setAttribute("data-telegram-login", TG_BOT_USERNAME);
+  sc.setAttribute("data-size", "large");
+  sc.setAttribute("data-userpic", "false");
+  sc.setAttribute("data-request-access", "write");
+  sc.setAttribute("data-onauth", "onTelegramAuth(user)");
+  box.appendChild(sc);
+}
+
+async function checkSession() {
+  try {
+    const r = await api("/api/session");
+    if (!r.ok) return { authenticated: false };
+    return await r.json();
+  } catch {
+    return { authenticated: false };
+  }
+}
+
+function bindPlannerEvents() {
+  if (isPlannerBound) return;
+  isPlannerBound = true;
   ["target","rate","weekType","goalType","goalValue","weekdayRealDefault","weekdayVirtualDefault","weekendVirtualDefault","hideDone","schemeMode"]
     .forEach((id) => { $(id).addEventListener("input", render); $(id).addEventListener("change", render); });
   $("autofill").onclick = buildTemplate;
@@ -461,7 +578,15 @@ function init() {
     a.forEach((x) => { x.fr = 0; x.fv = 0; x.fo = 0; x.done = false; });
     saveRows(a); render();
   };
-  $("reset").onclick = () => { localStorage.removeItem(K1); localStorage.removeItem(K2); init(); };
+  $("reset").onclick = () => {
+    localStorage.removeItem(K1);
+    localStorage.removeItem(K2);
+    const a = empty();
+    a.forEach((x) => { x.pr = 10; x.pv = 2; });
+    saveRows(a);
+    writeSet({ ...D });
+    render();
+  };
   $("schemeChooser").addEventListener("click", (e) => {
     const b = e.target.closest("button[data-scheme]");
     if (!b) return;
@@ -470,8 +595,30 @@ function init() {
     saveSet(s2);
     render();
   });
+}
+
+function initPlanner() {
+  const s = loadSet();
+  writeSet(s);
+  if (!localStorage.getItem(K1)) {
+    const a = empty();
+    a.forEach((x) => { x.pr = 10; x.pv = 2; });
+    saveRows(a);
+  }
+  bindPlannerEvents();
   render();
 }
-init();
+
+async function bootstrap() {
+  setupMatrixBackground();
+  const session = await checkSession();
+  if (session && session.authenticated) {
+    showAuthorizedUi(session);
+    initPlanner();
+    return;
+  }
+  mountTelegramWidget();
+}
+bootstrap();
 </script>
 </body></html>
