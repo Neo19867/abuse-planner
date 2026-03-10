@@ -1,0 +1,4 @@
+{
+  "project": "abuse-planner",
+  "note": "Static page uses localStorage only. No external secrets required."
+}
