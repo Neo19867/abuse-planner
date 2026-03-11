@@ -144,6 +144,41 @@ const distributeIntsByWeights = (total, weights) => {
   return base;
 };
 const distributeHours = (hours, n) => distributeInts(Math.round((+hours || 0) * 60), n).map((m) => r2(m / 60));
+const distributeIntsWithCaps = (total, caps, weights) => {
+  const t0 = Math.max(0, Math.round(+total || 0));
+  const c = (Array.isArray(caps) ? caps : []).map((x) => Math.max(0, Math.round(+x || 0)));
+  if (!c.length) return [];
+  const maxSum = c.reduce((p, x) => p + x, 0);
+  const t = Math.min(t0, maxSum);
+  const w0 = Array.isArray(weights) && weights.length === c.length ? weights : c.map(() => 1);
+  const w = w0.map((x, i) => c[i] > 0 ? Math.max(0, +x || 0) : 0);
+  const sw = w.reduce((p, x) => p + x, 0);
+  const ww = sw > 0 ? w : c.map((x) => x > 0 ? 1 : 0);
+  const sww = ww.reduce((p, x) => p + x, 0) || 1;
+
+  const raw = ww.map((x) => (t * x) / sww);
+  const out = raw.map((x, i) => Math.min(c[i], Math.floor(x)));
+  let left = t - out.reduce((p, x) => p + x, 0);
+
+  while (left > 0) {
+    let progressed = false;
+    const order = raw
+      .map((x, i) => ({ i, frac: x - Math.floor(x), capLeft: c[i] - out[i] }))
+      .filter((z) => z.capLeft > 0)
+      .sort((a, b) => b.frac - a.frac);
+    if (!order.length) break;
+    for (let k = 0; k < order.length && left > 0; k++) {
+      const i = order[k].i;
+      if (out[i] < c[i]) {
+        out[i]++;
+        left--;
+        progressed = true;
+      }
+    }
+    if (!progressed) break;
+  }
+  return out;
+};
 const empty = () => Array.from({ length: 14 }, () => ({ pr: 0, pv: 0, fr: 0, fv: 0, fo: 0, done: false }));
 const planOrd = (r, v, c) => r > 0 ? Math.ceil((+r + +v) * c) : 0;
 
@@ -304,8 +339,23 @@ function render() {
   const planOByIdx = Array(e.length).fill(0);
   const planRByIdx = Array(e.length).fill(0);
   const planVByIdx = Array(e.length).fill(0);
-  distributeHours(leftReal, activeRealIdx.length).forEach((v, i) => { planRByIdx[activeRealIdx[i]] = v; });
-  distributeHours(leftVirt, activeVirtIdx.length).forEach((v, i) => { planVByIdx[activeVirtIdx[i]] = v; });
+  const totalCapsByIdx = Array(e.length).fill(0);
+  activeAnyIdx.forEach((idx) => { totalCapsByIdx[idx] = Math.max(0, 12 - e[idx].fh); });
+
+  const realCaps = activeRealIdx.map((idx) => Math.max(0, Math.min(totalCapsByIdx[idx], (+s.realHoursPerWorkday || 0) - e[idx].fr) * 60));
+  const realWeights = activeRealIdx.map((idx) => Math.max(0, (e[idx].pr - e[idx].fr)));
+  const realAllocM = distributeIntsWithCaps(Math.round(leftReal * 60), realCaps, realWeights);
+  realAllocM.forEach((m, i) => { planRByIdx[activeRealIdx[i]] = r2(m / 60); });
+
+  const virtCaps = activeAnyIdx.map((idx) => {
+    const usedReal = Math.round((planRByIdx[idx] || 0) * 60);
+    const cap = Math.max(0, Math.round(totalCapsByIdx[idx] * 60) - usedReal);
+    return cap;
+  });
+  const virtWeights = activeAnyIdx.map((idx) => Math.max(0, (e[idx].pv - e[idx].fv)));
+  const virtAllocM = distributeIntsWithCaps(Math.round(leftVirt * 60), virtCaps, virtWeights);
+  virtAllocM.forEach((m, i) => { planVByIdx[activeAnyIdx[i]] = r2(m / 60); });
+
   const orderWeights = activeOrderIdx.map((idx) => Math.max(0, planRByIdx[idx] + planVByIdx[idx]));
   distributeIntsByWeights(leftO, orderWeights).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
 
@@ -315,6 +365,9 @@ function render() {
   const rpd = nextDayIdx >= 0 ? planRByIdx[nextDayIdx] : 0;
   const vpd = nextDayIdx >= 0 ? planVByIdx[nextDayIdx] : 0;
   const hpd = r2(rpd + vpd);
+  const allocR = r2(planRByIdx.reduce((p, x) => p + x, 0));
+  const allocV = r2(planVByIdx.reduce((p, x) => p + x, 0));
+  const overflowH = r2(Math.max(0, leftH - (allocR + allocV)));
   const coef = P.fh > 0 ? P.fo / P.fh : 0;
   const needCoefRemain = leftH > 0 ? leftO / leftH : 0;
   const todayOrdersPerHour = hpd > 0 ? opd / hpd : 0;
@@ -370,6 +423,7 @@ function render() {
     <div><b>Темп на сегодня:</b> ${todayOrdersPerHour.toFixed(2)} заказ/час при плане ${hm(hpd)}.</div>
     <div><b>Проверка в конце дня:</b> факт часов ≥ ${hm(hpd)} и факт заказов ≥ ${opd}.</div>
     <div><b>Контроль периода:</b> чтобы закрыть остаток, держите минимум ${needCoefRemain.toFixed(2)} заказ/час.</div>
+    ${overflowH > 0 ? `<div><b>Внимание:</b> не помещается ${hm(overflowH)} в лимиты дней (12ч/день и лимит реала).</div>` : ""}
     ${rpd < 10 && !weekend ? `<div><b>Почему так:</b> при реале меньше 10ч пауза-бонус недоступен.</div>` : ""}`;
   $("tips").innerHTML = tips;
 
