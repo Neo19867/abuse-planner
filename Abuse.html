@@ -145,6 +145,71 @@ const distributeIntsByWeights = (total, weights) => {
   return base;
 };
 const distributeHours = (hours, n) => distributeInts(Math.round((+hours || 0) * 60), n).map((m) => r2(m / 60));
+const fillByCapSequence = (totalMinutes, caps) => {
+  let left = Math.max(0, Math.round(+totalMinutes || 0));
+  const c = (Array.isArray(caps) ? caps : []).map((x) => Math.max(0, Math.round(+x || 0)));
+  const out = c.map(() => 0);
+  for (let i = 0; i < c.length && left > 0; i++) {
+    const give = Math.min(c[i], left);
+    out[i] = give;
+    left -= give;
+  }
+  return out;
+};
+const fillWeekendLumpyByWeek = (totalMinutes, dayIdx, caps) => {
+  let left = Math.max(0, Math.round(+totalMinutes || 0));
+  const idx = Array.isArray(dayIdx) ? dayIdx.slice() : [];
+  const c = (Array.isArray(caps) ? caps : []).map((x) => Math.max(0, Math.round(+x || 0)));
+  const out = c.map(() => 0);
+  if (!idx.length || idx.length !== c.length || left <= 0) return out;
+
+  const posByDay = {};
+  idx.forEach((d, p) => { posByDay[d] = p; });
+  const weeks = Array.from(new Set(idx.map((d) => Math.floor(d / 7)))).sort((a, b) => a - b);
+
+  // Глобальный приоритет: сначала все 2-е выходные (до 12ч), потом 1-е, потом остальные.
+  const secondDays = [];
+  const firstDays = [];
+  const otherDays = [];
+  weeks.forEach((w) => {
+    const days = idx.filter((d) => Math.floor(d / 7) === w).sort((a, b) => a - b);
+    if (!days.length) return;
+    if (days.length > 1) secondDays.push(days[1]); else secondDays.push(days[0]);
+    if (days.length > 1) firstDays.push(days[0]);
+    for (let k = 2; k < days.length; k++) otherDays.push(days[k]);
+  });
+
+  const ordered = [...secondDays, ...firstDays, ...otherDays];
+  ordered.forEach((d) => {
+    if (left <= 0) return;
+    const p = posByDay[d];
+    const free = Math.max(0, c[p] - out[p]);
+    if (free <= 0) return;
+    const cap = secondDays.includes(d) ? Math.min(free, 12 * 60) : free;
+    const give = Math.min(cap, left);
+    out[p] += give;
+    left -= give;
+  });
+
+  return out;
+};
+const enforceSecondWeekend12ByWeek = (hoursByIdx, workDaysPerWeek) => {
+  const arr = Array.isArray(hoursByIdx) ? hoursByIdx : [];
+  const wd = Math.max(1, Math.min(7, Math.round(+workDaysPerWeek || 5)));
+  if (wd >= 6) return arr;
+  for (let w = 0; w < 2; w++) {
+    const weekStart = w * 7;
+    const first = weekStart + wd;
+    const second = first + 1;
+    if (second >= weekStart + 7 || second >= arr.length) continue;
+    const pairM = Math.max(0, Math.round(((+arr[first] || 0) + (+arr[second] || 0)) * 60));
+    const secondM = Math.min(12 * 60, pairM);
+    const firstM = Math.max(0, pairM - secondM);
+    arr[first] = r2(firstM / 60);
+    arr[second] = r2(secondM / 60);
+  }
+  return arr;
+};
 const distributeIntsWithCaps = (total, caps, weights) => {
   const t0 = Math.max(0, Math.round(+total || 0));
   const c = (Array.isArray(caps) ? caps : []).map((x) => Math.max(0, Math.round(+x || 0)));
@@ -264,7 +329,9 @@ function applyGoal() {
 
   const offCap = offIdx.length * 12;
   const offGive = Math.min(virtualNeed, offCap);
-  distributeHours(offGive, offIdx.length).forEach((v, k) => { pvByIdx[offIdx[k]] = v; });
+  const offSeqM = fillWeekendLumpyByWeek(Math.round(offGive * 60), offIdx, offIdx.map(() => 12 * 60));
+  offSeqM.forEach((m, k) => { pvByIdx[offIdx[k]] = r2(m / 60); });
+  enforceSecondWeekend12ByWeek(pvByIdx, workDaysPerWeek);
 
   a.forEach((x, i) => {
     const isWorkDay = (i % 7) < workDaysPerWeek;
@@ -349,14 +416,34 @@ function render() {
   const realAllocM = distributeIntsWithCaps(Math.round(leftReal * 60), realCaps, realWeights);
   realAllocM.forEach((m, i) => { planRByIdx[activeRealIdx[i]] = r2(m / 60); });
 
-  const virtCaps = activeAnyIdx.map((idx) => {
+  const workVirtIdx = activeAnyIdx.filter((idx) => (idx % 7) < workDaysPerWeek);
+  const offVirtIdx = activeAnyIdx.filter((idx) => (idx % 7) >= workDaysPerWeek);
+  const virtCapsByIdx = {};
+  activeAnyIdx.forEach((idx) => {
     const usedReal = Math.round((planRByIdx[idx] || 0) * 60);
-    const cap = Math.max(0, Math.round(totalCapsByIdx[idx] * 60) - usedReal);
-    return cap;
+    virtCapsByIdx[idx] = Math.max(0, Math.round(totalCapsByIdx[idx] * 60) - usedReal);
   });
-  const virtWeights = activeAnyIdx.map((idx) => ((idx % 7) < workDaysPerWeek ? 100 : 1));
-  const virtAllocM = distributeIntsWithCaps(Math.round(leftVirt * 60), virtCaps, virtWeights);
-  virtAllocM.forEach((m, i) => { planVByIdx[activeAnyIdx[i]] = r2(m / 60); });
+
+  // 1) Сначала максимально переносим виртуал в будни.
+  const workCaps = workVirtIdx.map((idx) => virtCapsByIdx[idx] || 0);
+  const workWeights = workVirtIdx.map(() => 1);
+  const workVirtAllocM = distributeIntsWithCaps(Math.round(leftVirt * 60), workCaps, workWeights);
+  let virtLeftM = Math.round(leftVirt * 60);
+  workVirtAllocM.forEach((m, i) => {
+    const idx = workVirtIdx[i];
+    planVByIdx[idx] = r2(m / 60);
+    virtLeftM -= m;
+  });
+  virtLeftM = Math.max(0, virtLeftM);
+
+  // 2) Если после будней виртуал остался, в выходные кладем по неделе: 12:00 + остаток.
+  const offCaps = offVirtIdx.map((idx) => virtCapsByIdx[idx] || 0);
+  const offVirtAllocM = fillWeekendLumpyByWeek(virtLeftM, offVirtIdx, offCaps);
+  offVirtAllocM.forEach((m, i) => {
+    const idx = offVirtIdx[i];
+    planVByIdx[idx] = r2((planVByIdx[idx] || 0) + m / 60);
+  });
+  enforceSecondWeekend12ByWeek(planVByIdx, workDaysPerWeek);
 
   const orderWeights = activeOrderIdx.map((idx) => Math.max(0, planRByIdx[idx] + planVByIdx[idx]));
   distributeIntsByWeights(leftO, orderWeights).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
