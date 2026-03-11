@@ -575,7 +575,7 @@ function mountTelegramWidget() {
   const box = $("tgLoginWidget");
   if (!box) return;
   box.innerHTML = "";
-  if (!TG_BOT_USERNAME || TG_BOT_USERNAME === "neo19867_auth_bot") {
+  if (!TG_BOT_USERNAME) {
     setAuthStatus("Укажите username Telegram-бота в TG_BOT_USERNAME.", true);
     return;
   }
