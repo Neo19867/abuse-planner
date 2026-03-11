@@ -15,9 +15,6 @@ body{margin:0;font-family:Consolas,"Courier New",monospace;background:#000;color
 .auth-card{width:min(520px,100%);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 0 24px rgba(22,255,95,.12)}
 .auth-title{margin:0 0 8px;font-size:24px}
 .auth-status{margin-top:10px;color:var(--muted);min-height:20px}
-.admin-users{max-height:240px;overflow:auto;border:1px solid var(--line);border-radius:10px;padding:8px;background:rgba(0,18,7,.6)}
-.admin-user-row{display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px dashed rgba(31,166,75,.35)}
-.admin-user-row:last-child{border-bottom:none}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;backdrop-filter:blur(2px);box-shadow:0 0 24px rgba(22,255,95,.12)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
 label{display:block;color:var(--muted);font-size:12px;margin-bottom:5px}
@@ -65,25 +62,17 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 </div>
 <div class="wrap hidden" id="appWrap">
 <div class="card"><h1>By @Neo19867</h1><p style="color:var(--muted)">Галка «Выполнен» убирает день из активных для распределения остатка.</p></div>
-<div class="card hidden" id="adminCard"><h2>Статистика пользователей</h2><div class="label2">Локальная статистика этого браузера (режим GitHub Pages без сервера).</div><div class="stats" style="margin-top:8px">
-<div class="stat"><div class="label2">Всего пользователей</div><div class="value" id="adminTotalUsers">0</div></div>
-<div class="stat"><div class="label2">Логинов сегодня</div><div class="value" id="adminTodayLogins">0</div></div>
-<div class="stat"><div class="label2">Всего логинов</div><div class="value" id="adminTotalLogins">0</div></div>
-</div><div style="margin-top:10px" class="label2">Последние пользователи</div><div id="adminUsers" class="admin-users"></div></div>
 <div class="card"><h2>Настройки</h2><div class="grid">
 <div><label>Целевой коэффициент</label><input id="target" type="number" step="0.01" value="1.6"></div>
-<div><label>Доход за час</label><input id="rate" type="number" value="400"></div>
 <div><label>Формат недели</label><select id="weekType"><option value="5">5 рабочих дней</option><option value="7">7 рабочих дней</option></select></div>
-<div><label>Тип цели</label><select id="goalType"><option value="orders">Заказы</option><option value="money">Доход</option><option value="hours">Часы</option><option value="realDay">Реальные часы в день</option></select></div>
-<div><label>Значение цели</label><input id="goalValue" type="number" value="200"></div>
+<div><label>Цель: реальные часы в день</label><input id="goalValue" type="number" value="10"></div>
 <div><label>Будни реал (ч)</label><input id="weekdayRealDefault" type="number" value="10"></div>
 <div><label>Будни виртуал (ч)</label><input id="weekdayVirtualDefault" type="number" value="2"></div>
 <div><label>Выходной виртуал (ч)</label><input id="weekendVirtualDefault" type="number" value="12"></div>
 </div><div class="actions" style="margin-top:8px">
-<button id="autofill">Автозаполнить</button><button id="applyGoal">Подогнать цель</button><button id="copyPlanToFact">Факт = план</button><button id="clearFact">Очистить факт</button><button id="reset">Сброс</button>
+<button id="autofill">Автозаполнить</button><button id="applyGoal">Применить цель</button><button id="copyPlanToFact">Факт = план</button><button id="clearFact">Очистить факт</button><button id="reset">Сброс</button>
 </div></div>
 <div class="card"><h2>Показатели</h2><div class="stats">
-<div class="stat"><div class="label2">Факт доход</div><div class="value" id="factMoney">0 ₽</div><div id="moneyHint" class="label2"></div></div>
 <div class="stat"><div class="label2">Факт заказы</div><div class="value" id="factOrders">0</div><div id="ordersHint" class="label2"></div></div>
 <div class="stat"><div class="label2">Коэффициент</div><div class="value" id="factCoef">0</div><div id="coefStatus" class="label2"></div></div>
 <div class="stat"><div class="label2">Осталось заказов</div><div class="value" id="leftOrders">0</div><div class="label2" id="dayPlanHint"></div></div>
@@ -99,18 +88,14 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 const K1 = "courierPlan_rows_v14";
 const K2 = "courierPlan_settings_v14";
 const K3 = "courierPlan_auth_v1";
-const K4 = "courierPlan_auth_stats_v1";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
-const ADMIN_TG_USERNAME = "Neo19867";
 let isPlannerBound = false;
 
 const D = {
   target: 1.6,
-  rate: 400,
   weekType: "5",
-  goalType: "orders",
-  goalValue: 200,
+  goalValue: 10,
   weekdayRealDefault: 10,
   weekdayVirtualDefault: 2,
   weekendVirtualDefault: 12,
@@ -120,7 +105,6 @@ const D = {
 };
 
 const r2 = (n) => Math.round((+n || 0) * 100) / 100;
-const money = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(+n || 0)) + " ₽";
 const fmt = (n) => r2(n).toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
 const split = (h) => { const m = Math.max(0, Math.round((+h || 0) * 60)); return { h: Math.floor(m / 60), m: m % 60 }; };
 const comp = (h, m) => r2((Math.max(0, Math.round(+h || 0)) * 60 + Math.round(Math.max(0, Math.min(59, +m || 0)) / 5) * 5) / 60);
@@ -147,9 +131,7 @@ function readSet() {
   const e = loadSet();
   return {
     target: +$("target").value || 0,
-    rate: +$("rate").value || 0,
     weekType: $("weekType").value === "7" ? "7" : "5",
-    goalType: $("goalType").value,
     goalValue: +$("goalValue").value || 0,
     weekdayRealDefault: +$("weekdayRealDefault").value || 0,
     weekdayVirtualDefault: +$("weekdayVirtualDefault").value || 0,
@@ -162,9 +144,7 @@ function readSet() {
 
 function writeSet(s) {
   $("target").value = s.target;
-  $("rate").value = s.rate;
   $("weekType").value = s.weekType;
-  $("goalType").value = s.goalType;
   $("goalValue").value = s.goalValue;
   $("weekdayRealDefault").value = s.weekdayRealDefault;
   $("weekdayVirtualDefault").value = s.weekdayVirtualDefault;
@@ -191,37 +171,14 @@ function applyGoal() {
   const s = readSet();
   saveSet(s);
   const a = loadRows();
-
-  if (s.goalType === "realDay") {
-    const rows = a.filter((x) => x.pr > 0);
-    const ratio = rows.length
-      ? rows.reduce((p, x) => p + (x.pr > 0 ? x.pv / x.pr : 0), 0) / rows.length
-      : (s.weekdayVirtualDefault / (s.weekdayRealDefault || 1));
-    a.forEach((x) => {
-      if (x.pr > 0) {
-        x.pr = r2(s.goalValue);
-        x.pv = r2(s.goalValue * (isFinite(ratio) ? ratio : 0));
-      }
-    });
-    saveRows(a);
-    render();
-    return;
-  }
-
-  const b = a.reduce((p, x) => {
-    const h = x.pr + x.pv;
-    p.h += h; p.o += planOrd(x.pr, x.pv, s.target); p.m += h * s.rate;
-    return p;
-  }, { h: 0, o: 0, m: 0 });
-  let f = 1;
-  if (s.goalType === "hours") f = s.goalValue / (b.h || 1);
-  if (s.goalType === "money") f = s.goalValue / (b.m || 1);
-  if (s.goalType === "orders") f = s.goalValue / (b.o || 1);
-  if (!isFinite(f) || f <= 0) f = 1;
+  const rows = a.filter((x) => x.pr > 0);
+  const ratio = rows.length
+    ? rows.reduce((p, x) => p + (x.pr > 0 ? x.pv / x.pr : 0), 0) / rows.length
+    : (s.weekdayVirtualDefault / (s.weekdayRealDefault || 1));
   a.forEach((x) => {
-    if (!(s.goalType === "orders" && x.pr <= 0)) {
-      x.pr = r2(x.pr * f);
-      x.pv = r2(x.pv * f);
+    if (x.pr > 0) {
+      x.pr = r2(s.goalValue);
+      x.pv = r2(s.goalValue * (isFinite(ratio) ? ratio : 0));
     }
   });
   saveRows(a);
@@ -235,21 +192,16 @@ function render() {
   const e = a.map((x) => {
     const ph = x.pr + x.pv;
     const po = planOrd(x.pr, x.pv, s.target);
-    const pm = ph * s.rate;
     const fh = x.fr + x.fv;
-    const fm = fh * s.rate;
-    return { ...x, ph, po, pm, fh, fm, lo: Math.max(0, po - x.fo) };
+    return { ...x, ph, po, fh, lo: Math.max(0, po - x.fo) };
   });
 
   const P = {
     po: e.reduce((p, x) => p + x.po, 0),
     fo: e.reduce((p, x) => p + x.fo, 0),
-    pm: e.reduce((p, x) => p + x.pm, 0),
-    fm: e.reduce((p, x) => p + x.fm, 0),
     fh: e.reduce((p, x) => p + x.fh, 0),
   };
   const leftO = Math.max(0, P.po - P.fo);
-  const leftM = Math.max(0, P.pm - P.fm);
   const act = e.filter((x) => x.pr > 0 && !x.done);
   const n = act.length;
   const leftReal = Math.max(0, act.reduce((p, x) => p + x.pr, 0) - act.reduce((p, x) => p + x.fr, 0));
@@ -259,7 +211,6 @@ function render() {
   const rpd = n ? r2(leftReal / n) : 0;
   const vpd = n ? r2(leftVirt / n) : 0;
   const hpd = n ? r2(leftH / n) : 0;
-  const mpd = n ? r2(leftM / n) : 0;
   const coef = P.fh > 0 ? P.fo / P.fh : 0;
 
   $("rows").innerHTML = "";
@@ -281,13 +232,11 @@ function render() {
     $("rows").appendChild(tr);
   });
 
-  $("factMoney").textContent = money(P.fm);
-  $("moneyHint").textContent = "из " + money(P.pm);
   $("factOrders").textContent = P.fo;
   $("ordersHint").textContent = "из " + P.po;
   $("factCoef").textContent = coef.toFixed(2);
   $("leftOrders").textContent = leftO;
-  $("dayPlanHint").textContent = `реал ${fmt(rpd)} ч + виртуал ${fmt(vpd)} ч (≈ ${money(mpd)})`;
+  $("dayPlanHint").textContent = `реал ${fmt(rpd)} ч + виртуал ${fmt(vpd)} ч`;
   $("coefStatus").textContent = coef >= s.target ? "Коэффициент в норме" : coef >= s.target * 0.9 ? "Немного ниже цели" : "Сильно ниже цели";
 
   const weekend = (s.schemeMode === "weekend") || (s.schemeMode === "auto" && rpd <= 0.01 && vpd > 0.01);
@@ -472,17 +421,6 @@ function setAuthStatus(msg, isError = false) {
   el.style.color = isError ? "#ff7d7d" : "var(--muted)";
 }
 
-function isoNow() {
-  return new Date().toISOString();
-}
-
-function dayKey(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
-}
-
 function loadAuthSession() {
   try {
     return JSON.parse(localStorage.getItem(K3) || "null");
@@ -493,61 +431,9 @@ function saveAuthSession(s) {
   localStorage.setItem(K3, JSON.stringify(s));
 }
 
-function loadAuthStats() {
-  try {
-    const x = JSON.parse(localStorage.getItem(K4) || "null");
-    if (x && typeof x === "object") return x;
-  } catch {}
-  return { users: {}, logins: [] };
-}
-
-function saveAuthStats(x) {
-  localStorage.setItem(K4, JSON.stringify(x));
-}
-
-function isAdminUser(username) {
-  return String(username || "").replace(/^@/, "").toLowerCase() === ADMIN_TG_USERNAME.replace(/^@/, "").toLowerCase();
-}
-
-function registerLocalLogin(user) {
-  const stats = loadAuthStats();
-  const uid = String(user.id || "");
-  const prev = stats.users[uid] || {};
-  stats.users[uid] = {
-    id: user.id,
-    username: user.username || "",
-    first_name: user.first_name || "",
-    registered_at: prev.registered_at || isoNow(),
-    last_login_at: isoNow(),
-    login_count: Number(prev.login_count || 0) + 1,
-  };
-  stats.logins.push({ id: user.id, at: isoNow() });
-  if (stats.logins.length > 5000) stats.logins = stats.logins.slice(-5000);
-  saveAuthStats(stats);
-}
-
-function renderAdminStats() {
-  const stats = loadAuthStats();
-  const users = Object.values(stats.users || {}).sort((a, b) => new Date(b.last_login_at || 0) - new Date(a.last_login_at || 0));
-  const today = dayKey();
-  const todayLogins = (stats.logins || []).filter((x) => String(x.at || "").startsWith(today)).length;
-  $("adminTotalUsers").textContent = users.length;
-  $("adminTodayLogins").textContent = todayLogins;
-  $("adminTotalLogins").textContent = (stats.logins || []).length;
-  $("adminUsers").innerHTML = users.length
-    ? users.slice(0, 30).map((u) => `<div class="admin-user-row"><span>@${u.username || "no_username"} (${u.id})</span><span>${u.last_login_at || "-"}</span></div>`).join("")
-    : `<div class="label2">Пока нет данных.</div>`;
-}
-
 function showAuthorizedUi(session) {
   $("authGate").classList.add("hidden");
   $("appWrap").classList.remove("hidden");
-  if (session && session.is_admin) {
-    $("adminCard").classList.remove("hidden");
-    renderAdminStats();
-  } else {
-    $("adminCard").classList.add("hidden");
-  }
 }
 
 window.onTelegramAuth = (user) => {
@@ -555,10 +441,8 @@ window.onTelegramAuth = (user) => {
     setAuthStatus("Не удалось получить данные Telegram.", true);
     return;
   }
-  registerLocalLogin(user);
   const session = {
     authenticated: true,
-    is_admin: isAdminUser(user.username),
     user: {
       id: user.id,
       username: user.username || "",
@@ -599,7 +483,7 @@ function checkSession() {
 function bindPlannerEvents() {
   if (isPlannerBound) return;
   isPlannerBound = true;
-  ["target","rate","weekType","goalType","goalValue","weekdayRealDefault","weekdayVirtualDefault","weekendVirtualDefault","hideDone","schemeMode"]
+  ["target","weekType","goalValue","weekdayRealDefault","weekdayVirtualDefault","weekendVirtualDefault","hideDone","schemeMode"]
     .forEach((id) => { $(id).addEventListener("input", render); $(id).addEventListener("change", render); });
   $("autofill").onclick = buildTemplate;
   $("applyGoal").onclick = applyGoal;
