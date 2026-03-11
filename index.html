@@ -390,7 +390,9 @@ function render() {
   const leftVirt = r2(Math.max(0, P.pv - P.fv));
   const leftH = r2(leftReal + leftVirt);
   const workDaysPerWeek = Math.max(1, Math.min(7, Math.round(+s.workDaysPerWeek || 5)));
-  const requiredTotalOrders = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
+  const requiredTotalOrdersBase = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
+  const requiredTotalOrdersByCoef = Math.max(0, Math.ceil((P.fh + leftH) * safeCoef));
+  const requiredTotalOrders = Math.max(requiredTotalOrdersBase, requiredTotalOrdersByCoef);
   const leftO = Math.max(0, requiredTotalOrders - P.fo);
 
   const activeAnyIdx = [];
@@ -484,7 +486,7 @@ function render() {
   });
 
   $("factOrders").textContent = P.fo;
-  $("ordersHint").textContent = "план " + requiredTotalOrders;
+  $("ordersHint").textContent = `план ${requiredTotalOrders} (база ${requiredTotalOrdersBase}, по кэфу ${requiredTotalOrdersByCoef})`;
   $("factCoef").textContent = coef.toFixed(2);
   $("factReal").textContent = hm(P.fr);
   $("factVirtual").textContent = hm(P.fv);
@@ -515,7 +517,7 @@ function render() {
     <div><b>Что сделать сегодня:</b> ${opd} заказов, реал ${hm(rpd)} и виртуал ${hm(vpd)}.</div>
     <div><b>Остаток по активным дням:</b> реал ${hm(leftReal)} и виртуал ${hm(leftVirt)}.</div>
     <div><b>Темп на сегодня:</b> ${todayOrdersPerHour.toFixed(2)} заказ/час при плане ${hm(hpd)}.</div>
-    <div><b>Как считается:</b> остаток заказов = ceil((факт+остаток часов)*кэф_с_запасом) - факт заказов.</div>
+    <div><b>Как считается:</b> цель заказов = max(база, ceil((факт+остаток часов)*кэф_с_запасом)).</div>
     <div><b>Проверка в конце дня:</b> факт часов ≥ ${hm(hpd)} и факт заказов ≥ ${opd}.</div>
     <div><b>Контроль периода:</b> чтобы закрыть остаток, держите минимум ${needCoefRemain.toFixed(2)} заказ/час.</div>
     ${overflowH > 0 ? `<div><b>Внимание:</b> не помещается ${hm(overflowH)} в лимиты дней (12ч/день и лимит реала).</div>` : ""}
