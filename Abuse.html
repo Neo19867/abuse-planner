@@ -262,12 +262,12 @@ function render() {
     ph: e.reduce((p, x) => p + x.ph, 0),
     fh: e.reduce((p, x) => p + x.fh, 0),
   };
-  const projectedTotalHours = r2(P.fh + leftH);
-  const requiredTotalOrders = Math.ceil(projectedTotalHours * safeCoef);
-  const leftO = Math.max(0, requiredTotalOrders - P.fo);
   const leftReal = r2(Math.max(0, P.pr - P.fr));
   const leftVirt = r2(Math.max(0, P.pv - P.fv));
   const leftH = r2(leftReal + leftVirt);
+  const projectedTotalHours = r2(P.fh + leftH);
+  const requiredTotalOrders = Math.ceil(projectedTotalHours * safeCoef);
+  const leftO = Math.max(0, requiredTotalOrders - P.fo);
 
   const activeAnyIdx = [];
   const activeOrderIdx = [];
@@ -284,10 +284,10 @@ function render() {
   const planOByIdx = Array(e.length).fill(0);
   const planRByIdx = Array(e.length).fill(0);
   const planVByIdx = Array(e.length).fill(0);
-  const orderWeights = activeOrderIdx.map((idx) => Math.max(0, planRByIdx[idx] + planVByIdx[idx]));
-  distributeIntsByWeights(leftO, orderWeights).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
   distributeHours(leftReal, activeRealIdx.length).forEach((v, i) => { planRByIdx[activeRealIdx[i]] = v; });
   distributeHours(leftVirt, activeVirtIdx.length).forEach((v, i) => { planVByIdx[activeVirtIdx[i]] = v; });
+  const orderWeights = activeOrderIdx.map((idx) => Math.max(0, planRByIdx[idx] + planVByIdx[idx]));
+  distributeIntsByWeights(leftO, orderWeights).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
 
   const n = activeAnyIdx.length;
   const nextDayIdx = n ? activeAnyIdx[0] : -1;
