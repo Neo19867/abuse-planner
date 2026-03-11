@@ -92,7 +92,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div style="max-width:300px"><label>Режим схем</label><select id="schemeMode"><option value="auto">Авто</option><option value="workday">Будний</option><option value="weekend">Выходной</option></select></div>
 <div id="schemeChooser" class="schemes" style="margin-top:8px"></div><div id="schemeSavedHint" style="color:var(--muted);margin:6px 0"></div><div id="todayShiftPlan" class="shift"></div>
 </div>
-<div class="card"><h2>План и факт по дням</h2><label><input id="hideDone" type="checkbox"> Скрыть выполненные</label><div class="table-wrap"><table><thead><tr><th>День</th><th>План реал</th><th>План вирт</th><th>План часы</th><th>Баз. заказы</th><th>Факт реал</th><th>Факт вирт</th><th>Факт часы</th><th>Факт заказы</th><th>Нужно часов</th><th>Нужно заказов</th><th>Вып.</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+<div class="card"><h2>План и факт по дням</h2><label><input id="hideDone" type="checkbox"> Скрыть выполненные</label><div class="table-wrap"><table><thead><tr><th>День</th><th>План реал</th><th>План вирт</th><th>План часы</th><th>План заказы</th><th>Факт реал</th><th>Факт вирт</th><th>Факт часы</th><th>Факт заказы</th><th>Нужно часов</th><th>Нужно заказов</th><th>Вып.</th></tr></thead><tbody id="rows"></tbody></table></div></div>
 </div>
 <script>
 const K1 = "courierPlan_rows_v14";
@@ -382,7 +382,7 @@ function render() {
     tr.innerHTML = `<td data-label="День">День ${i + 1}</td>
       <td data-label="План реал"><span class=time><input type=number min=0 max=24 value=${pr.h} onchange="updT(${i},'pr','h',this.value)">:<input type=number min=0 max=59 value=${pr.m} onchange="updT(${i},'pr','m',this.value)"></span></td>
       <td data-label="План вирт"><span class=time><input type=number min=0 max=24 value=${pv.h} onchange="updT(${i},'pv','h',this.value)">:<input type=number min=0 max=59 value=${pv.m} onchange="updT(${i},'pv','m',this.value)"></span></td>
-      <td data-label="План часы">${hm(x.ph)}</td><td data-label="План заказы">${x.po}</td>
+      <td data-label="План часы">${hm(x.done ? x.ph : (planRByIdx[i] + planVByIdx[i]))}</td><td data-label="План заказы">${x.done ? x.po : planOByIdx[i]}</td>
       <td data-label="Факт реал"><span class=time><input type=number min=0 max=24 value=${fr.h} onchange="updT(${i},'fr','h',this.value)">:<input type=number min=0 max=59 value=${fr.m} onchange="updT(${i},'fr','m',this.value)"></span></td>
       <td data-label="Факт вирт"><span class=time><input type=number min=0 max=24 value=${fv.h} onchange="updT(${i},'fv','h',this.value)">:<input type=number min=0 max=59 value=${fv.m} onchange="updT(${i},'fv','m',this.value)"></span></td>
       <td data-label="Факт часы">${hm(x.fh)}</td>
