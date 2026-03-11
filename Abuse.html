@@ -126,6 +126,19 @@ const distributeInts = (total, n) => {
   let r = t % n;
   return Array.from({ length: n }, () => b + (r-- > 0 ? 1 : 0));
 };
+const distributeIntsByWeights = (total, weights) => {
+  const t = Math.max(0, Math.round(+total || 0));
+  const w = Array.isArray(weights) ? weights.map((x) => Math.max(0, +x || 0)) : [];
+  const sum = w.reduce((p, x) => p + x, 0);
+  if (!w.length) return [];
+  if (sum <= 0) return distributeInts(t, w.length);
+  const raw = w.map((x) => (t * x) / sum);
+  const base = raw.map((x) => Math.floor(x));
+  let left = t - base.reduce((p, x) => p + x, 0);
+  const order = raw.map((x, i) => ({ i, frac: x - Math.floor(x) })).sort((a, b) => b.frac - a.frac);
+  for (let k = 0; k < order.length && left > 0; k++, left--) base[order[k].i]++;
+  return base;
+};
 const distributeHours = (hours, n) => distributeInts(Math.round((+hours || 0) * 60), n).map((m) => r2(m / 60));
 const empty = () => Array.from({ length: 14 }, () => ({ pr: 0, pv: 0, fr: 0, fv: 0, fo: 0, done: false }));
 const planOrd = (r, v, c) => r > 0 ? Math.ceil((+r + +v) * c) : 0;
@@ -249,7 +262,9 @@ function render() {
     ph: e.reduce((p, x) => p + x.ph, 0),
     fh: e.reduce((p, x) => p + x.fh, 0),
   };
-  const leftO = Math.max(0, P.po - P.fo);
+  const projectedTotalHours = r2(P.fh + leftH);
+  const requiredTotalOrders = Math.ceil(projectedTotalHours * safeCoef);
+  const leftO = Math.max(0, requiredTotalOrders - P.fo);
   const leftReal = r2(Math.max(0, P.pr - P.fr));
   const leftVirt = r2(Math.max(0, P.pv - P.fv));
   const leftH = r2(leftReal + leftVirt);
@@ -269,7 +284,8 @@ function render() {
   const planOByIdx = Array(e.length).fill(0);
   const planRByIdx = Array(e.length).fill(0);
   const planVByIdx = Array(e.length).fill(0);
-  distributeInts(leftO, activeOrderIdx.length).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
+  const orderWeights = activeOrderIdx.map((idx) => Math.max(0, planRByIdx[idx] + planVByIdx[idx]));
+  distributeIntsByWeights(leftO, orderWeights).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
   distributeHours(leftReal, activeRealIdx.length).forEach((v, i) => { planRByIdx[activeRealIdx[i]] = v; });
   distributeHours(leftVirt, activeVirtIdx.length).forEach((v, i) => { planVByIdx[activeVirtIdx[i]] = v; });
 
@@ -301,7 +317,7 @@ function render() {
   });
 
   $("factOrders").textContent = P.fo;
-  $("ordersHint").textContent = "план " + P.po;
+  $("ordersHint").textContent = "план " + requiredTotalOrders;
   $("factCoef").textContent = coef.toFixed(2);
   $("factReal").textContent = hm(P.fr);
   $("factVirtual").textContent = hm(P.fv);
