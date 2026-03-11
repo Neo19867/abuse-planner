@@ -66,7 +66,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div><label>Целевой коэффициент</label><input id="target" type="number" step="0.01" value="1.6"></div>
 <div><label>Доход за час (₽)</label><input id="rate" type="number" value="400"></div>
 <div><label>Формат недели</label><select id="weekType"><option value="5">5 рабочих дней</option><option value="7">7 рабочих дней</option></select></div>
-<div><label>Цель: реальные часы в день</label><input id="goalValue" type="number" value="10"></div>
+<div><label>Цель часов в день</label><input id="goalValue" type="number" value="12" disabled></div>
 </div><div class="actions" style="margin-top:8px">
 <button id="applyGoal">Применить цель</button><button id="copyPlanToFact">Заполнить факт по плану</button><button id="reset">Сброс</button>
 </div></div>
@@ -97,12 +97,13 @@ const K3 = "courierPlan_auth_v1";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
+const DAY_TARGET_HOURS = 12;
 
 const D = {
   target: 1.6,
   rate: 400,
   weekType: "5",
-  goalValue: 10,
+  goalValue: DAY_TARGET_HOURS,
   weekdayRealDefault: 10,
   weekdayVirtualDefault: 0,
   weekendVirtualDefault: 12,
@@ -118,14 +119,6 @@ const split = (h) => { const m = Math.max(0, Math.round((+h || 0) * 60)); return
 const comp = (h, m) => r2((Math.max(0, Math.round(+h || 0)) * 60 + Math.round(Math.max(0, Math.min(59, +m || 0)) / 5) * 5) / 60);
 const hhmm = (m) => { m = Math.max(0, Math.round(+m || 0)); return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
 const hm = (h) => hhmm(Math.round((+h || 0) * 60));
-const distributeInts = (total, n) => {
-  if (n <= 0) return [];
-  const t = Math.max(0, Math.round(+total || 0));
-  const b = Math.floor(t / n);
-  let r = t % n;
-  return Array.from({ length: n }, () => b + (r-- > 0 ? 1 : 0));
-};
-const distributeHours = (hours, n) => distributeInts(Math.round((+hours || 0) * 60), n).map((m) => r2(m / 60));
 const empty = () => Array.from({ length: 14 }, () => ({ pr: 0, pv: 0, fr: 0, fv: 0, fo: 0, done: false }));
 const planOrd = (r, v, c) => r > 0 ? Math.ceil((+r + +v) * c) : 0;
 
@@ -150,7 +143,7 @@ function readSet() {
     target: +$("target").value || 0,
     rate: +$("rate").value || 0,
     weekType: $("weekType").value === "7" ? "7" : "5",
-    goalValue: +$("goalValue").value || 0,
+    goalValue: DAY_TARGET_HOURS,
     weekdayRealDefault: +e.weekdayRealDefault || D.weekdayRealDefault,
     weekdayVirtualDefault: +e.weekdayVirtualDefault || D.weekdayVirtualDefault,
     weekendVirtualDefault: +e.weekendVirtualDefault || D.weekendVirtualDefault,
@@ -165,7 +158,7 @@ function writeSet(s) {
   $("target").value = s.target;
   $("rate").value = s.rate;
   $("weekType").value = s.weekType;
-  $("goalValue").value = s.goalValue;
+  $("goalValue").value = DAY_TARGET_HOURS;
   $("hideDone").checked = !!s.hideDone;
   $("schemeMode").value = s.schemeMode || "auto";
 }
@@ -188,14 +181,15 @@ function applyGoal() {
   const s = readSet();
   saveSet(s);
   const a = loadRows();
+  const daily = DAY_TARGET_HOURS;
   a.forEach((x, i) => {
     const w = i % 7;
     const isWeekendIn5 = s.weekType === "5" && (w === 5 || w === 6);
     if (isWeekendIn5) {
       x.pr = 0;
-      x.pv = 12;
+      x.pv = daily;
     } else {
-      x.pr = r2(s.goalValue);
+      x.pr = r2(daily);
       x.pv = 0;
     }
   });
@@ -207,11 +201,8 @@ function runFirstStartSetup() {
   const s = loadSet();
   if (s.onboardingDone) return s;
   const wdRaw = prompt("Сколько дней в неделю планируете работать? (5 или 7)", "5");
-  const ghRaw = prompt("Сколько реальных часов в день планируете?", "10");
   const weekType = String(wdRaw || "").trim() === "7" ? "7" : "5";
-  let goal = +ghRaw;
-  if (!isFinite(goal) || goal <= 0) goal = 10;
-  const g = r2(goal);
+  const g = DAY_TARGET_HOURS;
   s.weekType = weekType;
   s.goalValue = g;
   s.weekdayRealDefault = g;
@@ -230,7 +221,7 @@ function render() {
   const a = loadRows();
   const e = a.map((x) => {
     const ph = x.pr + x.pv;
-    const po = planOrd(x.pr, x.pv, s.target);
+    const po = x.pr > 0 ? planOrd(x.pr, x.pv, s.target) : 0;
     const fh = x.fr + x.fv;
     return { ...x, ph, po, fh, lo: Math.max(0, po - x.fo) };
   });
@@ -245,36 +236,27 @@ function render() {
     ph: e.reduce((p, x) => p + x.ph, 0),
     fh: e.reduce((p, x) => p + x.fh, 0),
   };
-  const leftO = e.reduce((p, x) => p + (x.done ? 0 : Math.max(0, x.po - x.fo)), 0);
-  const leftReal = e.reduce((p, x) => p + (x.done ? 0 : Math.max(0, x.pr - x.fr)), 0);
-  const leftVirt = e.reduce((p, x) => p + (x.done ? 0 : Math.max(0, x.pv - x.fv)), 0);
-  const leftH = r2(leftReal + leftVirt);
-
+  const remOByIdx = Array(e.length).fill(0);
+  const remRByIdx = Array(e.length).fill(0);
+  const remVByIdx = Array(e.length).fill(0);
   const activeAnyIdx = [];
-  const activeOrderIdx = [];
-  const activeRealIdx = [];
-  const activeVirtIdx = [];
   e.forEach((x, i) => {
-    if (x.done) return;
-    if (x.ph > 0) activeAnyIdx.push(i);
-    if (x.pr > 0) activeOrderIdx.push(i);
-    if (x.pr > 0) activeRealIdx.push(i);
-    if (x.pv > 0) activeVirtIdx.push(i);
+    if (!x.done && x.ph > 0) activeAnyIdx.push(i);
+    remOByIdx[i] = x.done ? 0 : Math.max(0, x.po - x.fo);
+    remRByIdx[i] = x.done ? 0 : Math.max(0, x.pr - x.fr);
+    remVByIdx[i] = x.done ? 0 : Math.max(0, x.pv - x.fv);
   });
 
-  const planOByIdx = Array(e.length).fill(0);
-  const planRByIdx = Array(e.length).fill(0);
-  const planVByIdx = Array(e.length).fill(0);
-
-  distributeInts(leftO, activeOrderIdx.length).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
-  distributeHours(leftReal, activeRealIdx.length).forEach((v, i) => { planRByIdx[activeRealIdx[i]] = v; });
-  distributeHours(leftVirt, activeVirtIdx.length).forEach((v, i) => { planVByIdx[activeVirtIdx[i]] = v; });
+  const leftO = remOByIdx.reduce((p, v) => p + v, 0);
+  const leftReal = r2(remRByIdx.reduce((p, v) => p + v, 0));
+  const leftVirt = r2(remVByIdx.reduce((p, v) => p + v, 0));
+  const leftH = r2(leftReal + leftVirt);
 
   const n = activeAnyIdx.length;
   const nextDayIdx = n ? activeAnyIdx[0] : -1;
-  const opd = nextDayIdx >= 0 ? planOByIdx[nextDayIdx] : 0;
-  const rpd = nextDayIdx >= 0 ? planRByIdx[nextDayIdx] : 0;
-  const vpd = nextDayIdx >= 0 ? planVByIdx[nextDayIdx] : 0;
+  const opd = nextDayIdx >= 0 ? remOByIdx[nextDayIdx] : 0;
+  const rpd = nextDayIdx >= 0 ? remRByIdx[nextDayIdx] : 0;
+  const vpd = nextDayIdx >= 0 ? remVByIdx[nextDayIdx] : 0;
   const hpd = r2(rpd + vpd);
   const coef = P.fh > 0 ? P.fo / P.fh : 0;
 
@@ -287,12 +269,12 @@ function render() {
     tr.innerHTML = `<td data-label="День">День ${i + 1}</td>
       <td data-label="План реал"><span class=time><input type=number min=0 max=24 value=${pr.h} oninput="updT(${i},'pr','h',this.value)">:<input type=number min=0 max=59 value=${pr.m} oninput="updT(${i},'pr','m',this.value)"></span></td>
       <td data-label="План вирт"><span class=time><input type=number min=0 max=24 value=${pv.h} oninput="updT(${i},'pv','h',this.value)">:<input type=number min=0 max=59 value=${pv.m} oninput="updT(${i},'pv','m',this.value)"></span></td>
-      <td data-label="План часы">${hm(x.done ? x.ph : (planRByIdx[i] + planVByIdx[i]))}</td><td data-label="План заказы">${x.done ? x.po : planOByIdx[i]}</td>
+      <td data-label="План часы">${hm(x.done ? x.ph : (remRByIdx[i] + remVByIdx[i]))}</td><td data-label="План заказы">${x.done ? x.po : remOByIdx[i]}</td>
       <td data-label="Факт реал"><span class=time><input type=number min=0 max=24 value=${fr.h} oninput="updT(${i},'fr','h',this.value)">:<input type=number min=0 max=59 value=${fr.m} oninput="updT(${i},'fr','m',this.value)"></span></td>
       <td data-label="Факт вирт"><span class=time><input type=number min=0 max=24 value=${fv.h} oninput="updT(${i},'fv','h',this.value)">:<input type=number min=0 max=59 value=${fv.m} oninput="updT(${i},'fv','m',this.value)"></span></td>
       <td data-label="Факт часы">${hm(x.fh)}</td>
       <td data-label="Факт заказы"><input class=small-input type=number min=0 value=${x.fo} oninput="upd(${i},'fo',this.value)"></td>
-      <td data-label="Ост. заказы">${Math.max(0, (x.done ? x.po : planOByIdx[i]) - x.fo)}</td>
+      <td data-label="Ост. заказы">${x.done ? Math.max(0, x.po - x.fo) : remOByIdx[i]}</td>
       <td data-label="Выполнен"><input type=checkbox ${x.done ? "checked" : ""} oninput="upd(${i},'done',this.checked)"></td>`;
     $("rows").appendChild(tr);
   });
