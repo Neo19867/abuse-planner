@@ -399,13 +399,12 @@ function render() {
   const activeAnyIdx = [];
   const activeOrderIdx = [];
   const activeRealIdx = [];
-  const activeVirtIdx = [];
   e.forEach((x, i) => {
     if (x.done) return;
-    if (x.ph > 0) activeAnyIdx.push(i);
+    // Для добивки часов/кэфа используем любой незакрытый день, даже если в шаблоне там 00:00.
+    activeAnyIdx.push(i);
     if (x.pr > 0) activeOrderIdx.push(i);
     if (x.pr > 0) activeRealIdx.push(i);
-    if (x.pv > 0) activeVirtIdx.push(i);
   });
 
   const planOByIdx = Array(e.length).fill(0);
@@ -418,6 +417,12 @@ function render() {
   const realWeights = activeRealIdx.map((idx) => Math.max(0, (e[idx].pr - e[idx].fr)));
   const realAllocM = distributeIntsWithCaps(Math.round(leftReal * 60), realCaps, realWeights);
   realAllocM.forEach((m, i) => { planRByIdx[activeRealIdx[i]] = r2(m / 60); });
+  const leftRealM = Math.round(leftReal * 60);
+  const leftVirtM = Math.round(leftVirt * 60);
+  const allocRealM = realAllocM.reduce((p, x) => p + x, 0);
+  const realShortM = Math.max(0, leftRealM - allocRealM);
+  // Если реал не помещается в лимит по realHoursPerWorkday, добираем этот дефицит виртуалом.
+  const virtNeedM = leftVirtM + realShortM;
 
   const workVirtIdx = activeAnyIdx.filter((idx) => (idx % 7) < workDaysPerWeek);
   const offVirtIdx = activeAnyIdx.filter((idx) => (idx % 7) >= workDaysPerWeek);
@@ -430,8 +435,8 @@ function render() {
   // 1) Сначала максимально переносим виртуал в будни.
   const workCaps = workVirtIdx.map((idx) => virtCapsByIdx[idx] || 0);
   const workWeights = workVirtIdx.map(() => 1);
-  const workVirtAllocM = distributeIntsWithCaps(Math.round(leftVirt * 60), workCaps, workWeights);
-  let virtLeftM = Math.round(leftVirt * 60);
+  const workVirtAllocM = distributeIntsWithCaps(virtNeedM, workCaps, workWeights);
+  let virtLeftM = virtNeedM;
   workVirtAllocM.forEach((m, i) => {
     const idx = workVirtIdx[i];
     planVByIdx[idx] = r2(m / 60);
@@ -459,7 +464,9 @@ function render() {
   const hpd = r2(rpd + vpd);
   const allocR = r2(planRByIdx.reduce((p, x) => p + x, 0));
   const allocV = r2(planVByIdx.reduce((p, x) => p + x, 0));
-  const overflowH = r2(Math.max(0, leftH - (allocR + allocV)));
+  const leftTotalM = leftRealM + leftVirtM;
+  const allocTotalM = Math.round((allocR + allocV) * 60);
+  const overflowH = r2(Math.max(0, (leftTotalM - allocTotalM) / 60));
   const coef = P.fh > 0 ? P.fo / P.fh : 0;
   const needCoefRemain = leftH > 0 ? leftO / leftH : 0;
   const todayOrdersPerHour = hpd > 0 ? opd / hpd : 0;
