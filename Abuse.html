@@ -80,6 +80,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div class="stat"><div class="label2">Факт всего</div><div class="value" id="factTotal">00:00</div><div class="label2" id="hoursHint"></div></div>
 <div class="stat"><div class="label2">План доход</div><div class="value" id="planIncome">0 ₽</div><div class="label2" id="planIncomeHint"></div></div>
 <div class="stat"><div class="label2">Осталось заказов</div><div class="value" id="leftOrders">0</div><div class="label2" id="dayPlanHint"></div></div>
+<div class="stat"><div class="label2">Нужно кэф на остаток</div><div class="value" id="needCoef">0</div><div class="label2" id="needCoefHint"></div></div>
 <div class="stat"><div class="label2">Остаток реал</div><div class="value" id="leftRealStat">00:00</div><div class="label2">по активным дням</div></div>
 <div class="stat"><div class="label2">Остаток виртуал</div><div class="value" id="leftVirtStat">00:00</div><div class="label2">по активным дням</div></div>
 <div class="stat"><div class="label2">Активные дни</div><div class="value" id="activeDays">0</div><div class="label2">дней в работе</div></div>
@@ -90,7 +91,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div style="max-width:300px"><label>Режим схем</label><select id="schemeMode"><option value="auto">Авто</option><option value="workday">Будний</option><option value="weekend">Выходной</option></select></div>
 <div id="schemeChooser" class="schemes" style="margin-top:8px"></div><div id="schemeSavedHint" style="color:var(--muted);margin:6px 0"></div><div id="todayShiftPlan" class="shift"></div>
 </div>
-<div class="card"><h2>План и факт по дням</h2><label><input id="hideDone" type="checkbox"> Скрыть выполненные</label><div class="table-wrap"><table><thead><tr><th>День</th><th>План реал</th><th>План вирт</th><th>План часы</th><th>План заказы</th><th>Факт реал</th><th>Факт вирт</th><th>Факт часы</th><th>Факт заказы</th><th>Ост. заказы</th><th>Вып.</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+<div class="card"><h2>План и факт по дням</h2><label><input id="hideDone" type="checkbox"> Скрыть выполненные</label><div class="table-wrap"><table><thead><tr><th>День</th><th>План реал</th><th>План вирт</th><th>План часы</th><th>План заказы</th><th>Факт реал</th><th>Факт вирт</th><th>Факт часы</th><th>Факт заказы</th><th>Нужно часов</th><th>Нужно заказов</th><th>Вып.</th></tr></thead><tbody id="rows"></tbody></table></div></div>
 </div>
 <script>
 const K1 = "courierPlan_rows_v14";
@@ -315,6 +316,8 @@ function render() {
   const vpd = nextDayIdx >= 0 ? planVByIdx[nextDayIdx] : 0;
   const hpd = r2(rpd + vpd);
   const coef = P.fh > 0 ? P.fo / P.fh : 0;
+  const needCoefRemain = leftH > 0 ? leftO / leftH : 0;
+  const todayOrdersPerHour = hpd > 0 ? opd / hpd : 0;
 
   $("rows").innerHTML = "";
   e.forEach((x, i) => {
@@ -325,12 +328,13 @@ function render() {
     tr.innerHTML = `<td data-label="День">День ${i + 1}</td>
       <td data-label="План реал"><span class=time><input type=number min=0 max=24 value=${pr.h} onchange="updT(${i},'pr','h',this.value)">:<input type=number min=0 max=59 value=${pr.m} onchange="updT(${i},'pr','m',this.value)"></span></td>
       <td data-label="План вирт"><span class=time><input type=number min=0 max=24 value=${pv.h} onchange="updT(${i},'pv','h',this.value)">:<input type=number min=0 max=59 value=${pv.m} onchange="updT(${i},'pv','m',this.value)"></span></td>
-      <td data-label="План часы">${hm(x.done ? x.ph : (planRByIdx[i] + planVByIdx[i]))}</td><td data-label="План заказы">${x.done ? x.po : planOByIdx[i]}</td>
+      <td data-label="План часы">${hm(x.ph)}</td><td data-label="План заказы">${x.po}</td>
       <td data-label="Факт реал"><span class=time><input type=number min=0 max=24 value=${fr.h} onchange="updT(${i},'fr','h',this.value)">:<input type=number min=0 max=59 value=${fr.m} onchange="updT(${i},'fr','m',this.value)"></span></td>
       <td data-label="Факт вирт"><span class=time><input type=number min=0 max=24 value=${fv.h} onchange="updT(${i},'fv','h',this.value)">:<input type=number min=0 max=59 value=${fv.m} onchange="updT(${i},'fv','m',this.value)"></span></td>
       <td data-label="Факт часы">${hm(x.fh)}</td>
       <td data-label="Факт заказы"><input class=small-input type=number min=0 value=${x.fo} onchange="upd(${i},'fo',this.value)"></td>
-      <td data-label="Ост. заказы">${Math.max(0, (x.done ? x.po : planOByIdx[i]) - x.fo)}</td>
+      <td data-label="Нужно часов">${x.done ? "00:00" : hm(planRByIdx[i] + planVByIdx[i])}</td>
+      <td data-label="Нужно заказов">${x.done ? 0 : planOByIdx[i]}</td>
       <td data-label="Выполнен"><input type=checkbox ${x.done ? "checked" : ""} onchange="upd(${i},'done',this.checked)"></td>`;
     $("rows").appendChild(tr);
   });
@@ -346,6 +350,8 @@ function render() {
   $("planIncomeHint").textContent = `на сегодня ~ ${money((rpd + vpd) * s.rate)} (реал + виртуал)`;
   $("leftOrders").textContent = leftO;
   $("dayPlanHint").textContent = `на день: реал ${hm(rpd)} + виртуал ${hm(vpd)}`;
+  $("needCoef").textContent = needCoefRemain.toFixed(2);
+  $("needCoefHint").textContent = `сейчас факт ${coef.toFixed(2)} | цель ${safeCoef.toFixed(2)}`;
   $("leftRealStat").textContent = hm(leftReal);
   $("leftVirtStat").textContent = hm(leftVirt);
   $("activeDays").textContent = n;
@@ -361,7 +367,9 @@ function render() {
   const tips = `${coefBlock}
     <div><b>Что сделать сегодня:</b> ${opd} заказов, реал ${hm(rpd)} и виртуал ${hm(vpd)}.</div>
     <div><b>Остаток по активным дням:</b> реал ${hm(leftReal)} и виртуал ${hm(leftVirt)}.</div>
+    <div><b>Темп на сегодня:</b> ${todayOrdersPerHour.toFixed(2)} заказ/час при плане ${hm(hpd)}.</div>
     <div><b>Проверка в конце дня:</b> факт часов ≥ ${hm(hpd)} и факт заказов ≥ ${opd}.</div>
+    <div><b>Контроль периода:</b> чтобы закрыть остаток, держите минимум ${needCoefRemain.toFixed(2)} заказ/час.</div>
     ${rpd < 10 && !weekend ? `<div><b>Почему так:</b> при реале меньше 10ч пауза-бонус недоступен.</div>` : ""}`;
   $("tips").innerHTML = tips;
 
