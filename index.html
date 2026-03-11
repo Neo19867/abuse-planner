@@ -354,7 +354,7 @@ function render() {
     const cap = Math.max(0, Math.round(totalCapsByIdx[idx] * 60) - usedReal);
     return cap;
   });
-  const virtWeights = activeAnyIdx.map((idx) => Math.max(0, (e[idx].pv - e[idx].fv)));
+  const virtWeights = activeAnyIdx.map((idx) => ((idx % 7) < workDaysPerWeek ? 100 : 1));
   const virtAllocM = distributeIntsWithCaps(Math.round(leftVirt * 60), virtCaps, virtWeights);
   virtAllocM.forEach((m, i) => { planVByIdx[activeAnyIdx[i]] = r2(m / 60); });
 
