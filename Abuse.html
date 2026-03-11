@@ -97,6 +97,7 @@ const K3 = "courierPlan_auth_v1";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
+const COEF_RESERVE = 0.05;
 
 const D = {
   target: 1.6,
@@ -220,10 +221,11 @@ function runFirstStartSetup() {
 function render() {
   const s = readSet();
   saveSet(s);
+  const safeCoef = r2((s.target || 0) + COEF_RESERVE);
   const a = loadRows();
   const e = a.map((x) => {
     const ph = x.pr + x.pv;
-    const po = x.pr > 0 ? planOrd(x.pr, x.pv, s.target) : 0;
+    const po = x.pr > 0 ? planOrd(x.pr, x.pv, safeCoef) : 0;
     const fh = x.fr + x.fv;
     return { ...x, ph, po, fh, lo: Math.max(0, po - x.fo) };
   });
@@ -288,20 +290,22 @@ function render() {
   $("factVirtual").textContent = hm(P.fv);
   $("factTotal").textContent = hm(P.fh);
   $("hoursHint").textContent = "план " + hm(P.ph);
-  $("planIncome").textContent = money((P.fr + leftReal) * s.rate);
-  $("planIncomeHint").textContent = `на сегодня ~ ${money(rpd * s.rate)} (по реальным часам)`;
+  $("planIncome").textContent = money((P.fh + leftH) * s.rate);
+  $("planIncomeHint").textContent = `на сегодня ~ ${money((rpd + vpd) * s.rate)} (реал + виртуал)`;
   $("leftOrders").textContent = leftO;
   $("dayPlanHint").textContent = `на день: реал ${hm(rpd)} + виртуал ${hm(vpd)}`;
   $("leftRealStat").textContent = hm(leftReal);
   $("leftVirtStat").textContent = hm(leftVirt);
   $("activeDays").textContent = n;
   $("doneDays").textContent = e.filter((x) => x.done).length;
-  $("coefStatus").textContent = coef >= s.target ? "Коэффициент в норме" : coef >= s.target * 0.9 ? "Немного ниже цели" : "Сильно ниже цели";
+  $("coefStatus").textContent = coef >= safeCoef ? "Коэффициент с запасом" : coef >= s.target ? "Коэффициент в минимуме" : "Ниже минимума";
 
   const weekend = (s.schemeMode === "weekend") || (s.schemeMode === "auto" && rpd <= 0.01 && vpd > 0.01);
   const coefBlock = coef < s.target
-    ? `<div class=main>Приоритет: подтянуть коэффициент (цель ${s.target.toFixed(2)}).</div>`
-    : `<div class=main>Коэффициент в норме, фокус на закрытии остатка.</div>`;
+    ? `<div class=main>Приоритет: подтянуть коэффициент до минимума ${s.target.toFixed(2)}.</div>`
+    : coef < safeCoef
+      ? `<div class=main>Минимум выполнен, но лучше держать запас до ${safeCoef.toFixed(2)}.</div>`
+      : `<div class=main>Коэффициент с запасом (${safeCoef.toFixed(2)}), фокус на заработке по часам.</div>`;
   const tips = `${coefBlock}
     <div><b>Что сделать сегодня:</b> ${opd} заказов, реал ${hm(rpd)} и виртуал ${hm(vpd)}.</div>
     <div><b>Остаток по активным дням:</b> реал ${hm(leftReal)} и виртуал ${hm(leftVirt)}.</div>
@@ -551,8 +555,9 @@ function bindPlannerEvents() {
     .forEach((id) => { $(id).addEventListener("input", render); $(id).addEventListener("change", render); });
   $("applyGoal").onclick = applyGoal;
   $("copyPlanToFact").onclick = () => {
-    const a = loadRows(), c = +$("target").value || 1.6;
-    a.forEach((x) => { x.fr = x.pr; x.fv = x.pv; x.fo = planOrd(x.pr, x.pv, c); });
+    const a = loadRows();
+    const c = (+$("target").value || 1.6) + COEF_RESERVE;
+    a.forEach((x) => { x.fr = x.pr; x.fv = x.pv; x.fo = x.pr > 0 ? planOrd(x.pr, x.pv, c) : 0; });
     saveRows(a); render();
   };
   $("reset").onclick = () => {
