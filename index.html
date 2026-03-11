@@ -181,16 +181,17 @@ function applyGoal() {
   const s = readSet();
   saveSet(s);
   const a = loadRows();
-  const daily = Math.max(0, r2(s.goalValue || 0));
+  const realDaily = Math.max(0, r2(s.goalValue || 0));
+  const fullDay = 12;
   a.forEach((x, i) => {
     const w = i % 7;
     const isWeekendIn5 = s.weekType === "5" && (w === 5 || w === 6);
     if (isWeekendIn5) {
       x.pr = 0;
-      x.pv = 12;
+      x.pv = fullDay;
     } else {
-      x.pr = r2(daily);
-      x.pv = 0;
+      x.pr = r2(realDaily);
+      x.pv = r2(Math.max(0, fullDay - x.pr));
     }
   });
   saveRows(a);
