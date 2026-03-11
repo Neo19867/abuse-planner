@@ -70,7 +70,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div><label>План реальных часов в рабочий день</label><input id="realHoursPerWorkday" type="number" value="10"></div>
 <div><label>План заказов в рабочий день</label><input id="ordersPerDay" type="number" value="21"></div>
 </div><div class="actions" style="margin-top:8px">
-<button id="applyGoal">Применить цель</button><button id="copyPlanToFact">Заполнить факт по плану</button><button id="reset">Сброс</button>
+<button id="applyGoal">Применить цель</button><button id="reset">Сброс</button>
 </div></div>
 <div class="card"><h2>Показатели</h2><div class="stats">
 <div class="stat"><div class="label2">Факт заказы</div><div class="value" id="factOrders">0</div><div id="ordersHint" class="label2"></div></div>
@@ -101,7 +101,6 @@ const K3 = "courierPlan_auth_v1";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
-let lastDynamicPlan = null;
 
 const D = {
   target: 1.6,
@@ -393,7 +392,8 @@ function render() {
   const workDaysPerWeek = Math.max(1, Math.min(7, Math.round(+s.workDaysPerWeek || 5)));
   const requiredTotalOrdersBase = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
   const requiredTotalOrdersByCoef = Math.max(0, Math.ceil((P.fh + leftH) * safeCoef));
-  const requiredTotalOrders = Math.max(requiredTotalOrdersBase, requiredTotalOrdersByCoef);
+  // Приоритет — гарантированно выйти на целевой кэф по итоговым часам периода.
+  const requiredTotalOrders = requiredTotalOrdersByCoef;
   const leftO = Math.max(0, requiredTotalOrders - P.fo);
 
   const activeAnyIdx = [];
@@ -450,11 +450,6 @@ function render() {
 
   const orderWeights = activeOrderIdx.map((idx) => Math.max(0, planRByIdx[idx] + planVByIdx[idx]));
   distributeIntsByWeights(leftO, orderWeights).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
-  lastDynamicPlan = {
-    planRByIdx: planRByIdx.slice(),
-    planVByIdx: planVByIdx.slice(),
-    planOByIdx: planOByIdx.slice(),
-  };
 
   const n = activeAnyIdx.length;
   const nextDayIdx = n ? activeAnyIdx[0] : -1;
@@ -492,7 +487,7 @@ function render() {
   });
 
   $("factOrders").textContent = P.fo;
-  $("ordersHint").textContent = `план ${requiredTotalOrders} (база ${requiredTotalOrdersBase}, по кэфу ${requiredTotalOrdersByCoef})`;
+  $("ordersHint").textContent = `план ${requiredTotalOrders} (по кэфу; база была ${requiredTotalOrdersBase})`;
   $("factCoef").textContent = coef.toFixed(2);
   $("factReal").textContent = hm(P.fr);
   $("factVirtual").textContent = hm(P.fv);
@@ -523,7 +518,7 @@ function render() {
     <div><b>Что сделать сегодня:</b> ${opd} заказов, реал ${hm(rpd)} и виртуал ${hm(vpd)}.</div>
     <div><b>Остаток по активным дням:</b> реал ${hm(leftReal)} и виртуал ${hm(leftVirt)}.</div>
     <div><b>Темп на сегодня:</b> ${todayOrdersPerHour.toFixed(2)} заказ/час при плане ${hm(hpd)}.</div>
-    <div><b>Как считается:</b> цель заказов = max(база, ceil((факт+остаток часов)*кэф_с_запасом)).</div>
+    <div><b>Как считается:</b> цель заказов = ceil((факт+остаток часов)*кэф_с_запасом).</div>
     <div><b>Проверка в конце дня:</b> факт часов ≥ ${hm(hpd)} и факт заказов ≥ ${opd}.</div>
     <div><b>Контроль периода:</b> чтобы закрыть остаток, держите минимум ${needCoefRemain.toFixed(2)} заказ/час.</div>
     ${overflowH > 0 ? `<div><b>Внимание:</b> не помещается ${hm(overflowH)} в лимиты дней (12ч/день и лимит реала).</div>` : ""}
@@ -771,18 +766,6 @@ function bindPlannerEvents() {
   ["target","coefReserve","rate","workDaysPerWeek","realHoursPerWorkday","ordersPerDay","hideDone","schemeMode"]
     .forEach((id) => { $(id).addEventListener("input", render); $(id).addEventListener("change", render); });
   $("applyGoal").onclick = applyGoal;
-  $("copyPlanToFact").onclick = () => {
-    const a = loadRows();
-    if (!lastDynamicPlan) render();
-    const p = lastDynamicPlan;
-    a.forEach((x, i) => {
-      if (x.done) return;
-      x.fr = r2((p?.planRByIdx?.[i]) || 0);
-      x.fv = r2((p?.planVByIdx?.[i]) || 0);
-      x.fo = Math.max(0, Math.round((p?.planOByIdx?.[i]) || 0));
-    });
-    saveRows(a); render();
-  };
   $("reset").onclick = () => {
     localStorage.removeItem(K1);
     localStorage.removeItem(K2);
