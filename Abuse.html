@@ -254,11 +254,13 @@ function render() {
   const leftH = r2(leftReal + leftVirt);
 
   const activeAnyIdx = [];
+  const activeOrderIdx = [];
   const activeRealIdx = [];
   const activeVirtIdx = [];
   e.forEach((x, i) => {
     if (x.done) return;
     if (x.ph > 0) activeAnyIdx.push(i);
+    if (x.pr > 0) activeOrderIdx.push(i);
     if (x.pr > 0) activeRealIdx.push(i);
     if (x.pv > 0) activeVirtIdx.push(i);
   });
@@ -267,7 +269,7 @@ function render() {
   const planRByIdx = Array(e.length).fill(0);
   const planVByIdx = Array(e.length).fill(0);
 
-  distributeInts(leftO, activeAnyIdx.length).forEach((v, i) => { planOByIdx[activeAnyIdx[i]] = v; });
+  distributeInts(leftO, activeOrderIdx.length).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
   distributeHours(leftReal, activeRealIdx.length).forEach((v, i) => { planRByIdx[activeRealIdx[i]] = v; });
   distributeHours(leftVirt, activeVirtIdx.length).forEach((v, i) => { planVByIdx[activeVirtIdx[i]] = v; });
 
@@ -286,15 +288,15 @@ function render() {
     if (x.done) tr.className = "done";
     const pr = split(x.pr), pv = split(x.pv), fr = split(x.fr), fv = split(x.fv);
     tr.innerHTML = `<td data-label="День">День ${i + 1}</td>
-      <td data-label="План реал"><span class=time><input type=number min=0 max=24 value=${pr.h} onchange="updT(${i},'pr','h',this.value)">:<input type=number min=0 max=59 value=${pr.m} onchange="updT(${i},'pr','m',this.value)"></span></td>
-      <td data-label="План вирт"><span class=time><input type=number min=0 max=24 value=${pv.h} onchange="updT(${i},'pv','h',this.value)">:<input type=number min=0 max=59 value=${pv.m} onchange="updT(${i},'pv','m',this.value)"></span></td>
+      <td data-label="План реал"><span class=time><input type=number min=0 max=24 value=${pr.h} oninput="updT(${i},'pr','h',this.value)">:<input type=number min=0 max=59 value=${pr.m} oninput="updT(${i},'pr','m',this.value)"></span></td>
+      <td data-label="План вирт"><span class=time><input type=number min=0 max=24 value=${pv.h} oninput="updT(${i},'pv','h',this.value)">:<input type=number min=0 max=59 value=${pv.m} oninput="updT(${i},'pv','m',this.value)"></span></td>
       <td data-label="План часы">${hm(x.done ? x.ph : (planRByIdx[i] + planVByIdx[i]))}</td><td data-label="План заказы">${x.done ? x.po : planOByIdx[i]}</td>
-      <td data-label="Факт реал"><span class=time><input type=number min=0 max=24 value=${fr.h} onchange="updT(${i},'fr','h',this.value)">:<input type=number min=0 max=59 value=${fr.m} onchange="updT(${i},'fr','m',this.value)"></span></td>
-      <td data-label="Факт вирт"><span class=time><input type=number min=0 max=24 value=${fv.h} onchange="updT(${i},'fv','h',this.value)">:<input type=number min=0 max=59 value=${fv.m} onchange="updT(${i},'fv','m',this.value)"></span></td>
+      <td data-label="Факт реал"><span class=time><input type=number min=0 max=24 value=${fr.h} oninput="updT(${i},'fr','h',this.value)">:<input type=number min=0 max=59 value=${fr.m} oninput="updT(${i},'fr','m',this.value)"></span></td>
+      <td data-label="Факт вирт"><span class=time><input type=number min=0 max=24 value=${fv.h} oninput="updT(${i},'fv','h',this.value)">:<input type=number min=0 max=59 value=${fv.m} oninput="updT(${i},'fv','m',this.value)"></span></td>
       <td data-label="Факт часы">${hm(x.fh)}</td>
-      <td data-label="Факт заказы"><input class=small-input type=number min=0 value=${x.fo} onchange="upd(${i},'fo',this.value)"></td>
+      <td data-label="Факт заказы"><input class=small-input type=number min=0 value=${x.fo} oninput="upd(${i},'fo',this.value)"></td>
       <td data-label="Ост. заказы">${Math.max(0, (x.done ? x.po : planOByIdx[i]) - x.fo)}</td>
-      <td data-label="Выполнен"><input type=checkbox ${x.done ? "checked" : ""} onchange="upd(${i},'done',this.checked)"></td>`;
+      <td data-label="Выполнен"><input type=checkbox ${x.done ? "checked" : ""} oninput="upd(${i},'done',this.checked)"></td>`;
     $("rows").appendChild(tr);
   });
 
