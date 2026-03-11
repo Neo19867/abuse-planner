@@ -61,16 +61,13 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
   </div>
 </div>
 <div class="wrap hidden" id="appWrap">
-<div class="card"><h1>By @Neo19867</h1><p style="color:var(--muted)">Галка «Выполнен» убирает день из активных для распределения остатка.</p></div>
+<div class="card"><h1>By @Neo19867</h1></div>
 <div class="card"><h2>Настройки</h2><div class="grid">
 <div><label>Целевой коэффициент</label><input id="target" type="number" step="0.01" value="1.6"></div>
 <div><label>Формат недели</label><select id="weekType"><option value="5">5 рабочих дней</option><option value="7">7 рабочих дней</option></select></div>
 <div><label>Цель: реальные часы в день</label><input id="goalValue" type="number" value="10"></div>
-<div><label>Будни реал (ч)</label><input id="weekdayRealDefault" type="number" value="10"></div>
-<div><label>Будни виртуал (ч)</label><input id="weekdayVirtualDefault" type="number" value="2"></div>
-<div><label>Выходной виртуал (ч)</label><input id="weekendVirtualDefault" type="number" value="12"></div>
 </div><div class="actions" style="margin-top:8px">
-<button id="autofill">Автозаполнить</button><button id="applyGoal">Применить цель</button><button id="copyPlanToFact">Факт = план</button><button id="clearFact">Очистить факт</button><button id="reset">Сброс</button>
+<button id="applyGoal">Применить цель</button><button id="copyPlanToFact">Заполнить факт по плану</button><button id="reset">Сброс</button>
 </div></div>
 <div class="card"><h2>Показатели</h2><div class="stats">
 <div class="stat"><div class="label2">Факт заказы</div><div class="value" id="factOrders">0</div><div id="ordersHint" class="label2"></div></div>
@@ -99,6 +96,7 @@ const D = {
   weekdayRealDefault: 10,
   weekdayVirtualDefault: 2,
   weekendVirtualDefault: 12,
+  onboardingDone: false,
   hideDone: false,
   preferredScheme: "auto",
   schemeMode: "auto",
@@ -133,9 +131,10 @@ function readSet() {
     target: +$("target").value || 0,
     weekType: $("weekType").value === "7" ? "7" : "5",
     goalValue: +$("goalValue").value || 0,
-    weekdayRealDefault: +$("weekdayRealDefault").value || 0,
-    weekdayVirtualDefault: +$("weekdayVirtualDefault").value || 0,
-    weekendVirtualDefault: +$("weekendVirtualDefault").value || 0,
+    weekdayRealDefault: +e.weekdayRealDefault || D.weekdayRealDefault,
+    weekdayVirtualDefault: +e.weekdayVirtualDefault || D.weekdayVirtualDefault,
+    weekendVirtualDefault: +e.weekendVirtualDefault || D.weekendVirtualDefault,
+    onboardingDone: !!e.onboardingDone,
     hideDone: $("hideDone").checked,
     preferredScheme: e.preferredScheme || "auto",
     schemeMode: $("schemeMode").value,
@@ -146,9 +145,6 @@ function writeSet(s) {
   $("target").value = s.target;
   $("weekType").value = s.weekType;
   $("goalValue").value = s.goalValue;
-  $("weekdayRealDefault").value = s.weekdayRealDefault;
-  $("weekdayVirtualDefault").value = s.weekdayVirtualDefault;
-  $("weekendVirtualDefault").value = s.weekendVirtualDefault;
   $("hideDone").checked = !!s.hideDone;
   $("schemeMode").value = s.schemeMode || "auto";
 }
@@ -171,18 +167,43 @@ function applyGoal() {
   const s = readSet();
   saveSet(s);
   const a = loadRows();
-  const rows = a.filter((x) => x.pr > 0);
+  const rows = a.filter((x) => x.pr > 0 || x.pv > 0);
   const ratio = rows.length
     ? rows.reduce((p, x) => p + (x.pr > 0 ? x.pv / x.pr : 0), 0) / rows.length
     : (s.weekdayVirtualDefault / (s.weekdayRealDefault || 1));
-  a.forEach((x) => {
-    if (x.pr > 0) {
+  a.forEach((x, i) => {
+    const w = i % 7;
+    const isWeekendIn5 = s.weekType === "5" && (w === 5 || w === 6);
+    if (isWeekendIn5) {
+      x.pr = 0;
+      x.pv = r2(s.weekendVirtualDefault);
+    } else {
       x.pr = r2(s.goalValue);
       x.pv = r2(s.goalValue * (isFinite(ratio) ? ratio : 0));
     }
   });
   saveRows(a);
   render();
+}
+
+function runFirstStartSetup() {
+  const s = loadSet();
+  if (s.onboardingDone) return s;
+  const wdRaw = prompt("Сколько дней в неделю планируете работать? (5 или 7)", "5");
+  const ghRaw = prompt("Сколько реальных часов в день планируете?", "10");
+  const weekType = String(wdRaw || "").trim() === "7" ? "7" : "5";
+  let goal = +ghRaw;
+  if (!isFinite(goal) || goal <= 0) goal = 10;
+  const g = r2(goal);
+  s.weekType = weekType;
+  s.goalValue = g;
+  s.weekdayRealDefault = g;
+  s.weekdayVirtualDefault = r2(Math.max(0, g * 0.2));
+  s.onboardingDone = true;
+  saveSet(s);
+  writeSet(s);
+  buildTemplate();
+  return s;
 }
 
 function render() {
@@ -293,13 +314,17 @@ function render() {
   const sb = 8 * 60;
   const nine = 9 * 60;
   const realMinutes = Math.round(rpd * 60);
-  const reFrom8 = sb + realMinutes;
   const reFrom9 = nine + realMinutes;
   const virtMin = Math.round(virt * 60);
   const pauseA = Math.min(60, Math.round(virt * 60)); // вариант А: 08:00-09:00 преднабор
   const virtLeftAfterA = Math.max(0, Math.round(virt * 60) - pauseA);
   const pauseB = Math.min(60, Math.round(virt * 60)); // вариант Б: пауза после реала
   const virtLeftAfterB = Math.max(0, Math.round(virt * 60) - pauseB);
+  const pickSlotHours = (fromMin, needUntilMin) => {
+    const needMin = Math.max(0, needUntilMin - fromMin);
+    const h = Math.ceil(needMin / 60);
+    return Math.max(10, Math.min(12, h || 10));
+  };
 
   let p = `<div class=title>Понятная схема на сегодня${nextDayNum ? ` (день ${nextDayNum})` : ""}</div>`;
   p += `<div class=step><b>Цель:</b> ${opd} заказов, реал ${fmt(rpd)} ч, виртуал ${fmt(vpd)} ч.</div>`;
@@ -314,10 +339,11 @@ function render() {
     const pauseEndA = sb + pauseA;
     const workStartA = Math.max(nine, pauseEndA);
     const workEndA = workStartA + realMinutes;
+    const slotA = pickSlotHours(nine, workEndA + virtLeftAfterA);
     p += `<div class=step><b>Рекомендация:</b> ${preferA ? "Вариант A" : "Вариант B"}.</div>`;
     p += `<div class=step><b>Вариант A (08:00 + пауза):</b></div>`;
     p += `<div class=step>1. 08:00 открыть слот на 10–12ч и сразу взять паузу ${fmt(pauseA / 60)} ч (до ${hhmm(pauseEndA)}).</div>`;
-    p += `<div class=step>2. В ${hhmm(pauseEndA)} закрыть этот слот, открыть новый слот с нужным временем.</div>`;
+    p += `<div class=step>2. В ${hhmm(pauseEndA)} закрыть этот слот, открыть новый на ${slotA} ч (до ${hhmm(nine + slotA * 60)}).</div>`;
     p += `<div class=step>3. ${hhmm(workStartA)}-${hhmm(workEndA)}: реальная работа ${fmt(rpd)} ч.</div>`;
     if (virtLeftAfterA > 0) p += `<div class=step>4. Остаток виртуала ${fmt(virtLeftAfterA / 60)} ч добрать после реала.</div>`;
     p += `<div class=step><b>Вариант B (старт в 09:00):</b></div>`;
@@ -335,10 +361,11 @@ function render() {
     const virtRemain = Math.max(0, virtMin - firstPause - secondPause);
     const workStart = firstPause > 0 ? nine : sb;
     const workEnd = workStart + realMinutes;
+    const slotAfter9 = pickSlotHours(nine, workEnd + secondPause);
     p += `<div class=step>1. ${hhmm(sb)}: открыть слот 10–12ч.</div>`;
     if (firstPause > 0) {
       p += `<div class=step>2. ${hhmm(sb)}-${hhmm(sb + firstPause)}: пауза (${fmt(firstPause / 60)} ч виртуала).</div>`;
-      p += `<div class=step>3. ${hhmm(sb + firstPause)}: закрыть слот и сразу открыть новый.</div>`;
+      p += `<div class=step>3. ${hhmm(sb + firstPause)}: закрыть слот и сразу открыть новый на ${slotAfter9} ч (до ${hhmm(nine + slotAfter9 * 60)}).</div>`;
       p += `<div class=step>4. ${hhmm(workStart)}-${hhmm(workEnd)}: реальная работа ${fmt(rpd)} ч.</div>`;
     } else {
       p += `<div class=step>2. ${hhmm(workStart)}-${hhmm(workEnd)}: реальная работа ${fmt(rpd)} ч.</div>`;
@@ -483,27 +510,21 @@ function checkSession() {
 function bindPlannerEvents() {
   if (isPlannerBound) return;
   isPlannerBound = true;
-  ["target","weekType","goalValue","weekdayRealDefault","weekdayVirtualDefault","weekendVirtualDefault","hideDone","schemeMode"]
+  ["target","weekType","goalValue","hideDone","schemeMode"]
     .forEach((id) => { $(id).addEventListener("input", render); $(id).addEventListener("change", render); });
-  $("autofill").onclick = buildTemplate;
   $("applyGoal").onclick = applyGoal;
   $("copyPlanToFact").onclick = () => {
     const a = loadRows(), c = +$("target").value || 1.6;
     a.forEach((x) => { x.fr = x.pr; x.fv = x.pv; x.fo = planOrd(x.pr, x.pv, c); });
     saveRows(a); render();
   };
-  $("clearFact").onclick = () => {
-    const a = loadRows();
-    a.forEach((x) => { x.fr = 0; x.fv = 0; x.fo = 0; x.done = false; });
-    saveRows(a); render();
-  };
   $("reset").onclick = () => {
     localStorage.removeItem(K1);
     localStorage.removeItem(K2);
-    const a = empty();
-    a.forEach((x) => { x.pr = 10; x.pv = 2; });
-    saveRows(a);
-    writeSet({ ...D });
+    const s = { ...D };
+    saveSet(s);
+    writeSet(s);
+    runFirstStartSetup();
     render();
   };
   $("schemeChooser").addEventListener("click", (e) => {
@@ -517,12 +538,11 @@ function bindPlannerEvents() {
 }
 
 function initPlanner() {
-  const s = loadSet();
+  let s = loadSet();
+  if (!s.onboardingDone) s = runFirstStartSetup();
   writeSet(s);
   if (!localStorage.getItem(K1)) {
-    const a = empty();
-    a.forEach((x) => { x.pr = 10; x.pv = 2; });
-    saveRows(a);
+    buildTemplate();
   }
   bindPlannerEvents();
   render();
