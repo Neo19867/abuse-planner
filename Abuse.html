@@ -114,6 +114,14 @@ const split = (h) => { const m = Math.max(0, Math.round((+h || 0) * 60)); return
 const comp = (h, m) => r2((Math.max(0, Math.round(+h || 0)) * 60 + Math.round(Math.max(0, Math.min(59, +m || 0)) / 5) * 5) / 60);
 const hhmm = (m) => { m = Math.max(0, Math.round(+m || 0)); return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
 const hm = (h) => hhmm(Math.round((+h || 0) * 60));
+const distributeInts = (total, n) => {
+  if (n <= 0) return [];
+  const t = Math.max(0, Math.round(+total || 0));
+  const b = Math.floor(t / n);
+  let r = t % n;
+  return Array.from({ length: n }, () => b + (r-- > 0 ? 1 : 0));
+};
+const distributeHours = (hours, n) => distributeInts(Math.round((+hours || 0) * 60), n).map((m) => r2(m / 60));
 const empty = () => Array.from({ length: 14 }, () => ({ pr: 0, pv: 0, fr: 0, fv: 0, fo: 0, done: false }));
 const planOrd = (r, v, c) => r > 0 ? Math.ceil((+r + +v) * c) : 0;
 
@@ -227,18 +235,42 @@ function render() {
   const P = {
     po: e.reduce((p, x) => p + x.po, 0),
     fo: e.reduce((p, x) => p + x.fo, 0),
+    pr: e.reduce((p, x) => p + x.pr, 0),
+    pv: e.reduce((p, x) => p + x.pv, 0),
+    fr: e.reduce((p, x) => p + x.fr, 0),
+    fv: e.reduce((p, x) => p + x.fv, 0),
+    ph: e.reduce((p, x) => p + x.ph, 0),
     fh: e.reduce((p, x) => p + x.fh, 0),
   };
   const leftO = Math.max(0, P.po - P.fo);
-  const act = e.filter((x) => x.pr > 0 && !x.done);
-  const n = act.length;
-  const leftReal = Math.max(0, act.reduce((p, x) => p + x.pr, 0) - act.reduce((p, x) => p + x.fr, 0));
-  const leftVirt = Math.max(0, act.reduce((p, x) => p + x.pv, 0) - act.reduce((p, x) => p + x.fv, 0));
-  const leftH = Math.max(0, act.reduce((p, x) => p + x.ph, 0) - act.reduce((p, x) => p + x.fh, 0));
-  const opd = n ? Math.ceil(leftO / n) : 0;
-  const rpd = n ? r2(leftReal / n) : 0;
-  const vpd = n ? r2(leftVirt / n) : 0;
-  const hpd = n ? r2(leftH / n) : 0;
+  const leftReal = Math.max(0, P.pr - P.fr);
+  const leftVirt = Math.max(0, P.pv - P.fv);
+  const leftH = Math.max(0, leftReal + leftVirt);
+
+  const activeAnyIdx = [];
+  const activeRealIdx = [];
+  const activeVirtIdx = [];
+  e.forEach((x, i) => {
+    if (x.done) return;
+    if (x.ph > 0) activeAnyIdx.push(i);
+    if (x.pr > 0) activeRealIdx.push(i);
+    if (x.pv > 0) activeVirtIdx.push(i);
+  });
+
+  const planOByIdx = Array(e.length).fill(0);
+  const planRByIdx = Array(e.length).fill(0);
+  const planVByIdx = Array(e.length).fill(0);
+
+  distributeInts(leftO, activeAnyIdx.length).forEach((v, i) => { planOByIdx[activeAnyIdx[i]] = v; });
+  distributeHours(leftReal, activeRealIdx.length).forEach((v, i) => { planRByIdx[activeRealIdx[i]] = v; });
+  distributeHours(leftVirt, activeVirtIdx.length).forEach((v, i) => { planVByIdx[activeVirtIdx[i]] = v; });
+
+  const n = activeAnyIdx.length;
+  const nextDayIdx = n ? activeAnyIdx[0] : -1;
+  const opd = nextDayIdx >= 0 ? planOByIdx[nextDayIdx] : 0;
+  const rpd = nextDayIdx >= 0 ? planRByIdx[nextDayIdx] : 0;
+  const vpd = nextDayIdx >= 0 ? planVByIdx[nextDayIdx] : 0;
+  const hpd = r2(rpd + vpd);
   const coef = P.fh > 0 ? P.fo / P.fh : 0;
 
   $("rows").innerHTML = "";
@@ -250,23 +282,23 @@ function render() {
     tr.innerHTML = `<td data-label="День">День ${i + 1}</td>
       <td data-label="План реал"><span class=time><input type=number min=0 max=24 value=${pr.h} onchange="updT(${i},'pr','h',this.value)">:<input type=number min=0 max=59 value=${pr.m} onchange="updT(${i},'pr','m',this.value)"></span></td>
       <td data-label="План вирт"><span class=time><input type=number min=0 max=24 value=${pv.h} onchange="updT(${i},'pv','h',this.value)">:<input type=number min=0 max=59 value=${pv.m} onchange="updT(${i},'pv','m',this.value)"></span></td>
-      <td data-label="План часы">${hm(x.ph)}</td><td data-label="План заказы">${x.po}</td>
+      <td data-label="План часы">${hm(x.done ? x.ph : (planRByIdx[i] + planVByIdx[i]))}</td><td data-label="План заказы">${x.done ? x.po : planOByIdx[i]}</td>
       <td data-label="Факт реал"><span class=time><input type=number min=0 max=24 value=${fr.h} onchange="updT(${i},'fr','h',this.value)">:<input type=number min=0 max=59 value=${fr.m} onchange="updT(${i},'fr','m',this.value)"></span></td>
       <td data-label="Факт вирт"><span class=time><input type=number min=0 max=24 value=${fv.h} onchange="updT(${i},'fv','h',this.value)">:<input type=number min=0 max=59 value=${fv.m} onchange="updT(${i},'fv','m',this.value)"></span></td>
       <td data-label="Факт часы">${hm(x.fh)}</td>
       <td data-label="Факт заказы"><input class=small-input type=number min=0 value=${x.fo} onchange="upd(${i},'fo',this.value)"></td>
-      <td data-label="Ост. заказы">${x.lo}</td>
+      <td data-label="Ост. заказы">${Math.max(0, (x.done ? x.po : planOByIdx[i]) - x.fo)}</td>
       <td data-label="Выполнен"><input type=checkbox ${x.done ? "checked" : ""} onchange="upd(${i},'done',this.checked)"></td>`;
     $("rows").appendChild(tr);
   });
 
   $("factOrders").textContent = P.fo;
-  $("ordersHint").textContent = "из " + P.po;
+  $("ordersHint").textContent = "план " + (P.fo + leftO);
   $("factCoef").textContent = coef.toFixed(2);
-  $("factReal").textContent = hm(e.reduce((p, x) => p + x.fr, 0));
-  $("factVirtual").textContent = hm(e.reduce((p, x) => p + x.fv, 0));
+  $("factReal").textContent = hm(P.fr);
+  $("factVirtual").textContent = hm(P.fv);
   $("factTotal").textContent = hm(P.fh);
-  $("hoursHint").textContent = "план " + hm(e.reduce((p, x) => p + x.ph, 0));
+  $("hoursHint").textContent = "план " + hm(P.fr + P.fv + leftH);
   $("leftOrders").textContent = leftO;
   $("dayPlanHint").textContent = `на день: реал ${hm(rpd)} + виртуал ${hm(vpd)}`;
   $("leftRealStat").textContent = hm(leftReal);
@@ -286,7 +318,6 @@ function render() {
     ${rpd < 10 && !weekend ? `<div><b>Почему так:</b> при реале меньше 10ч пауза-бонус недоступен.</div>` : ""}`;
   $("tips").innerHTML = tips;
 
-  const nextDayIdx = e.findIndex((x) => x.pr > 0 && !x.done);
   const nextDayNum = nextDayIdx >= 0 ? nextDayIdx + 1 : null;
   const virt = vpd;
   const pauseCap = rpd >= 10 ? 2 : 0;
