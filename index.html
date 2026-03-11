@@ -72,7 +72,14 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div class="card"><h2>Показатели</h2><div class="stats">
 <div class="stat"><div class="label2">Факт заказы</div><div class="value" id="factOrders">0</div><div id="ordersHint" class="label2"></div></div>
 <div class="stat"><div class="label2">Коэффициент</div><div class="value" id="factCoef">0</div><div id="coefStatus" class="label2"></div></div>
+<div class="stat"><div class="label2">Факт реал</div><div class="value" id="factReal">00:00</div><div class="label2">в часах</div></div>
+<div class="stat"><div class="label2">Факт виртуал</div><div class="value" id="factVirtual">00:00</div><div class="label2">в часах</div></div>
+<div class="stat"><div class="label2">Факт всего</div><div class="value" id="factTotal">00:00</div><div class="label2" id="hoursHint"></div></div>
 <div class="stat"><div class="label2">Осталось заказов</div><div class="value" id="leftOrders">0</div><div class="label2" id="dayPlanHint"></div></div>
+<div class="stat"><div class="label2">Остаток реал</div><div class="value" id="leftRealStat">00:00</div><div class="label2">по активным дням</div></div>
+<div class="stat"><div class="label2">Остаток виртуал</div><div class="value" id="leftVirtStat">00:00</div><div class="label2">по активным дням</div></div>
+<div class="stat"><div class="label2">Активные дни</div><div class="value" id="activeDays">0</div><div class="label2">дней в работе</div></div>
+<div class="stat"><div class="label2">Выполненные дни</div><div class="value" id="doneDays">0</div><div class="label2">из 14</div></div>
 </div></div>
 <div class="card"><h2>Подсказки</h2><div id="tips" class="tips"></div></div>
 <div class="card"><h2>План смены</h2>
@@ -103,10 +110,10 @@ const D = {
 };
 
 const r2 = (n) => Math.round((+n || 0) * 100) / 100;
-const fmt = (n) => r2(n).toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1");
 const split = (h) => { const m = Math.max(0, Math.round((+h || 0) * 60)); return { h: Math.floor(m / 60), m: m % 60 }; };
 const comp = (h, m) => r2((Math.max(0, Math.round(+h || 0)) * 60 + Math.round(Math.max(0, Math.min(59, +m || 0)) / 5) * 5) / 60);
 const hhmm = (m) => { m = Math.max(0, Math.round(+m || 0)); return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
+const hm = (h) => hhmm(Math.round((+h || 0) * 60));
 const empty = () => Array.from({ length: 14 }, () => ({ pr: 0, pv: 0, fr: 0, fv: 0, fo: 0, done: false }));
 const planOrd = (r, v, c) => r > 0 ? Math.ceil((+r + +v) * c) : 0;
 
@@ -243,10 +250,10 @@ function render() {
     tr.innerHTML = `<td data-label="День">День ${i + 1}</td>
       <td data-label="План реал"><span class=time><input type=number min=0 max=24 value=${pr.h} onchange="updT(${i},'pr','h',this.value)">:<input type=number min=0 max=59 value=${pr.m} onchange="updT(${i},'pr','m',this.value)"></span></td>
       <td data-label="План вирт"><span class=time><input type=number min=0 max=24 value=${pv.h} onchange="updT(${i},'pv','h',this.value)">:<input type=number min=0 max=59 value=${pv.m} onchange="updT(${i},'pv','m',this.value)"></span></td>
-      <td data-label="План часы">${fmt(x.ph)}</td><td data-label="План заказы">${x.po}</td>
+      <td data-label="План часы">${hm(x.ph)}</td><td data-label="План заказы">${x.po}</td>
       <td data-label="Факт реал"><span class=time><input type=number min=0 max=24 value=${fr.h} onchange="updT(${i},'fr','h',this.value)">:<input type=number min=0 max=59 value=${fr.m} onchange="updT(${i},'fr','m',this.value)"></span></td>
       <td data-label="Факт вирт"><span class=time><input type=number min=0 max=24 value=${fv.h} onchange="updT(${i},'fv','h',this.value)">:<input type=number min=0 max=59 value=${fv.m} onchange="updT(${i},'fv','m',this.value)"></span></td>
-      <td data-label="Факт часы">${fmt(x.fh)}</td>
+      <td data-label="Факт часы">${hm(x.fh)}</td>
       <td data-label="Факт заказы"><input class=small-input type=number min=0 value=${x.fo} onchange="upd(${i},'fo',this.value)"></td>
       <td data-label="Ост. заказы">${x.lo}</td>
       <td data-label="Выполнен"><input type=checkbox ${x.done ? "checked" : ""} onchange="upd(${i},'done',this.checked)"></td>`;
@@ -256,8 +263,16 @@ function render() {
   $("factOrders").textContent = P.fo;
   $("ordersHint").textContent = "из " + P.po;
   $("factCoef").textContent = coef.toFixed(2);
+  $("factReal").textContent = hm(e.reduce((p, x) => p + x.fr, 0));
+  $("factVirtual").textContent = hm(e.reduce((p, x) => p + x.fv, 0));
+  $("factTotal").textContent = hm(P.fh);
+  $("hoursHint").textContent = "план " + hm(e.reduce((p, x) => p + x.ph, 0));
   $("leftOrders").textContent = leftO;
-  $("dayPlanHint").textContent = `реал ${fmt(rpd)} ч + виртуал ${fmt(vpd)} ч`;
+  $("dayPlanHint").textContent = `на день: реал ${hm(rpd)} + виртуал ${hm(vpd)}`;
+  $("leftRealStat").textContent = hm(leftReal);
+  $("leftVirtStat").textContent = hm(leftVirt);
+  $("activeDays").textContent = n;
+  $("doneDays").textContent = e.filter((x) => x.done).length;
   $("coefStatus").textContent = coef >= s.target ? "Коэффициент в норме" : coef >= s.target * 0.9 ? "Немного ниже цели" : "Сильно ниже цели";
 
   const weekend = (s.schemeMode === "weekend") || (s.schemeMode === "auto" && rpd <= 0.01 && vpd > 0.01);
@@ -265,9 +280,9 @@ function render() {
     ? `<div class=main>Приоритет: подтянуть коэффициент (цель ${s.target.toFixed(2)}).</div>`
     : `<div class=main>Коэффициент в норме, фокус на закрытии остатка.</div>`;
   const tips = `${coefBlock}
-    <div><b>Что сделать сегодня:</b> ${opd} заказов, ${fmt(rpd)} ч реала и ${fmt(vpd)} ч виртуала.</div>
-    <div><b>Остаток по активным дням:</b> реал ${fmt(leftReal)} ч и виртуал ${fmt(leftVirt)} ч.</div>
-    <div><b>Проверка в конце дня:</b> факт часов ≥ ${fmt(hpd)} и факт заказов ≥ ${opd}.</div>
+    <div><b>Что сделать сегодня:</b> ${opd} заказов, реал ${hm(rpd)} и виртуал ${hm(vpd)}.</div>
+    <div><b>Остаток по активным дням:</b> реал ${hm(leftReal)} и виртуал ${hm(leftVirt)}.</div>
+    <div><b>Проверка в конце дня:</b> факт часов ≥ ${hm(hpd)} и факт заказов ≥ ${opd}.</div>
     ${rpd < 10 && !weekend ? `<div><b>Почему так:</b> при реале меньше 10ч пауза-бонус недоступен.</div>` : ""}`;
   $("tips").innerHTML = tips;
 
@@ -289,12 +304,12 @@ function render() {
         opts = [
           { id: "pause_only", name: "Только паузами", desc: "Без поездки", feasible: true },
           { id: "district_only", name: "Добивка районом", desc: "12ч слот в другом районе", feasible: true },
-          { id: "hybrid", name: "Смешанная схема", desc: `Паузы + район, районом добрать ${fmt(dNeed)} ч`, feasible: true },
+          { id: "hybrid", name: "Смешанная схема", desc: `Паузы + район, районом добрать ${hm(dNeed)}`, feasible: true },
         ];
         rec = (virt <= pauseCap) ? "pause_only" : (virt <= pauseCap + 12) ? "hybrid" : "district_only";
       } else {
         opts = [
-          { id: "local_virtual", name: "Добрать в своем районе", desc: `После реала добрать виртуал ${fmt(virt)} ч`, feasible: true },
+          { id: "local_virtual", name: "Добрать в своем районе", desc: `После реала добрать виртуал ${hm(virt)}`, feasible: true },
           { id: "district_only", name: "Добивка районом", desc: "12ч слот в другом районе (если нужен быстрый длинный виртуал)", feasible: true },
         ];
         rec = virt <= 2 ? "local_virtual" : "district_only";
@@ -327,13 +342,13 @@ function render() {
   };
 
   let p = `<div class=title>Понятная схема на сегодня${nextDayNum ? ` (день ${nextDayNum})` : ""}</div>`;
-  p += `<div class=step><b>Цель:</b> ${opd} заказов, реал ${fmt(rpd)} ч, виртуал ${fmt(vpd)} ч.</div>`;
+  p += `<div class=step><b>Цель:</b> ${opd} заказов, реал ${hm(rpd)}, виртуал ${hm(vpd)}.</div>`;
   if (!n) {
     p += `<div class=step>Активных дней нет.</div>`;
   } else if (sel === "weekend_district" || sel === "district_only") {
     p += `<div class=step>1. Доехать в район с доступным 12ч слотом.</div>`;
     p += `<div class=step>2. Открыть слот, поставить паузу, уехать обратно.</div>`;
-    p += `<div class=step>3. Набрать виртуал до цели ${fmt(vpd)} ч.</div>`;
+    p += `<div class=step>3. Набрать виртуал до цели ${hm(vpd)}.</div>`;
   } else if (sel === "local_virtual") {
     const preferA = rpd >= 9.5 && virt <= 1.05;
     const pauseEndA = sb + pauseA;
@@ -342,19 +357,19 @@ function render() {
     const slotA = pickSlotHours(nine, workEndA + virtLeftAfterA);
     p += `<div class=step><b>Рекомендация:</b> ${preferA ? "Вариант A" : "Вариант B"}.</div>`;
     p += `<div class=step><b>Вариант A (08:00 + пауза):</b></div>`;
-    p += `<div class=step>1. 08:00 открыть слот на 10–12ч и сразу взять паузу ${fmt(pauseA / 60)} ч (до ${hhmm(pauseEndA)}).</div>`;
+    p += `<div class=step>1. 08:00 открыть слот на 10–12ч и сразу взять паузу ${hhmm(pauseA)} (до ${hhmm(pauseEndA)}).</div>`;
     p += `<div class=step>2. В ${hhmm(pauseEndA)} закрыть этот слот, открыть новый на ${slotA} ч (до ${hhmm(nine + slotA * 60)}).</div>`;
-    p += `<div class=step>3. ${hhmm(workStartA)}-${hhmm(workEndA)}: реальная работа ${fmt(rpd)} ч.</div>`;
-    if (virtLeftAfterA > 0) p += `<div class=step>4. Остаток виртуала ${fmt(virtLeftAfterA / 60)} ч добрать после реала.</div>`;
+    p += `<div class=step>3. ${hhmm(workStartA)}-${hhmm(workEndA)}: реальная работа ${hm(rpd)}.</div>`;
+    if (virtLeftAfterA > 0) p += `<div class=step>4. Остаток виртуала ${hhmm(virtLeftAfterA)} добрать после реала.</div>`;
     p += `<div class=step><b>Вариант B (старт в 09:00):</b></div>`;
     p += `<div class=step>1. В 09:00 открыть слот на 10–12ч.</div>`;
-    p += `<div class=step>2. 09:00-${hhmm(reFrom9)}: отработать реал ${fmt(rpd)} ч.</div>`;
-    if (pauseB > 0) p += `<div class=step>3. Взять паузу ${fmt(pauseB / 60)} ч и закрыть слот.</div>`;
-    if (virtLeftAfterB > 0) p += `<div class=step>4. Остаток виртуала ${fmt(virtLeftAfterB / 60)} ч добрать отдельным коротким выходом.</div>`;
+    p += `<div class=step>2. 09:00-${hhmm(reFrom9)}: отработать реал ${hm(rpd)}.</div>`;
+    if (pauseB > 0) p += `<div class=step>3. Взять паузу ${hhmm(pauseB)} и закрыть слот.</div>`;
+    if (virtLeftAfterB > 0) p += `<div class=step>4. Остаток виртуала ${hhmm(virtLeftAfterB)} добрать отдельным коротким выходом.</div>`;
   } else if (sel === "hybrid") {
     if (pauseA > 0) p += `<div class=step>1. 08:00-09:00: пауза (преднабор виртуала).</div>`;
     p += `<div class=step>${pauseA > 0 ? "2" : "1"}. 09:00-${hhmm(reFrom9)}: реальная работа.</div>`;
-    p += `<div class=step>${pauseA > 0 ? "3" : "2"}. Остаток виртуала ${fmt(dNeed)} ч добрать через район.</div>`;
+    p += `<div class=step>${pauseA > 0 ? "3" : "2"}. Остаток виртуала ${hm(dNeed)} добрать через район.</div>`;
   } else if (sel === "pause_only") {
     const firstPause = Math.min(60, virtMin);
     const secondPause = Math.min(60, Math.max(0, virtMin - firstPause));
@@ -364,22 +379,22 @@ function render() {
     const slotAfter9 = pickSlotHours(nine, workEnd + secondPause);
     p += `<div class=step>1. ${hhmm(sb)}: открыть слот 10–12ч.</div>`;
     if (firstPause > 0) {
-      p += `<div class=step>2. ${hhmm(sb)}-${hhmm(sb + firstPause)}: пауза (${fmt(firstPause / 60)} ч виртуала).</div>`;
+      p += `<div class=step>2. ${hhmm(sb)}-${hhmm(sb + firstPause)}: пауза (${hhmm(firstPause)} виртуала).</div>`;
       p += `<div class=step>3. ${hhmm(sb + firstPause)}: закрыть слот и сразу открыть новый на ${slotAfter9} ч (до ${hhmm(nine + slotAfter9 * 60)}).</div>`;
-      p += `<div class=step>4. ${hhmm(workStart)}-${hhmm(workEnd)}: реальная работа ${fmt(rpd)} ч.</div>`;
+      p += `<div class=step>4. ${hhmm(workStart)}-${hhmm(workEnd)}: реальная работа ${hm(rpd)}.</div>`;
     } else {
-      p += `<div class=step>2. ${hhmm(workStart)}-${hhmm(workEnd)}: реальная работа ${fmt(rpd)} ч.</div>`;
+      p += `<div class=step>2. ${hhmm(workStart)}-${hhmm(workEnd)}: реальная работа ${hm(rpd)}.</div>`;
     }
     if (secondPause > 0) {
-      p += `<div class=step>${firstPause > 0 ? "5" : "3"}. ${hhmm(workEnd)}-${hhmm(workEnd + secondPause)}: пауза (${fmt(secondPause / 60)} ч виртуала).</div>`;
+      p += `<div class=step>${firstPause > 0 ? "5" : "3"}. ${hhmm(workEnd)}-${hhmm(workEnd + secondPause)}: пауза (${hhmm(secondPause)} виртуала).</div>`;
     }
     if (virtRemain > 0) {
-      p += `<div class=step><b>Остаток виртуала:</b> ${fmt(virtRemain / 60)} ч добрать отдельным коротким выходом.</div>`;
+      p += `<div class=step><b>Остаток виртуала:</b> ${hhmm(virtRemain)} добрать отдельным коротким выходом.</div>`;
     }
   } else {
     p += `<div class=step>1. В 09:00 выйти на линию.</div>`;
-    p += `<div class=step>2. 09:00-${hhmm(reFrom9)}: реальная работа ${fmt(rpd)} ч.</div>`;
-    if (virt > 0) p += `<div class=step>3. Добор виртуала ${fmt(virt)} ч: через паузу в конце или отдельным коротким выходом.</div>`;
+    p += `<div class=step>2. 09:00-${hhmm(reFrom9)}: реальная работа ${hm(rpd)}.</div>`;
+    if (virt > 0) p += `<div class=step>3. Добор виртуала ${hm(virt)}: через паузу в конце или отдельным коротким выходом.</div>`;
   }
   $("todayShiftPlan").innerHTML = p;
 }
