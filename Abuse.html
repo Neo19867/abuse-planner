@@ -79,7 +79,8 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div class="stat"><div class="label2">Факт виртуал</div><div class="value" id="factVirtual">00:00</div><div class="label2">в часах</div></div>
 <div class="stat"><div class="label2">Факт всего</div><div class="value" id="factTotal">00:00</div><div class="label2" id="hoursHint"></div></div>
 <div class="stat"><div class="label2">План доход</div><div class="value" id="planIncome">0 ₽</div><div class="label2" id="planIncomeHint"></div></div>
-<div class="stat"><div class="label2">Осталось заказов</div><div class="value" id="leftOrders">0</div><div class="label2" id="dayPlanHint"></div></div>
+<div class="stat"><div class="label2">Нужно заказов сегодня</div><div class="value" id="needOrdersToday">0</div><div class="label2" id="needOrdersTodayHint"></div></div>
+<div class="stat"><div class="label2">Нужно заказов на период</div><div class="value" id="leftOrders">0</div><div class="label2" id="dayPlanHint"></div></div>
 <div class="stat"><div class="label2">Нужно кэф на остаток</div><div class="value" id="needCoef">0</div><div class="label2" id="needCoefHint"></div></div>
 <div class="stat"><div class="label2">Остаток реал</div><div class="value" id="leftRealStat">00:00</div><div class="label2">по активным дням</div></div>
 <div class="stat"><div class="label2">Остаток виртуал</div><div class="value" id="leftVirtStat">00:00</div><div class="label2">по активным дням</div></div>
@@ -91,7 +92,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div style="max-width:300px"><label>Режим схем</label><select id="schemeMode"><option value="auto">Авто</option><option value="workday">Будний</option><option value="weekend">Выходной</option></select></div>
 <div id="schemeChooser" class="schemes" style="margin-top:8px"></div><div id="schemeSavedHint" style="color:var(--muted);margin:6px 0"></div><div id="todayShiftPlan" class="shift"></div>
 </div>
-<div class="card"><h2>План и факт по дням</h2><label><input id="hideDone" type="checkbox"> Скрыть выполненные</label><div class="table-wrap"><table><thead><tr><th>День</th><th>План реал</th><th>План вирт</th><th>План часы</th><th>План заказы</th><th>Факт реал</th><th>Факт вирт</th><th>Факт часы</th><th>Факт заказы</th><th>Нужно часов</th><th>Нужно заказов</th><th>Вып.</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+<div class="card"><h2>План и факт по дням</h2><label><input id="hideDone" type="checkbox"> Скрыть выполненные</label><div class="table-wrap"><table><thead><tr><th>День</th><th>План реал</th><th>План вирт</th><th>План часы</th><th>Баз. заказы</th><th>Факт реал</th><th>Факт вирт</th><th>Факт часы</th><th>Факт заказы</th><th>Нужно часов</th><th>Нужно заказов</th><th>Вып.</th></tr></thead><tbody id="rows"></tbody></table></div></div>
 </div>
 <script>
 const K1 = "courierPlan_rows_v14";
@@ -401,8 +402,10 @@ function render() {
   $("hoursHint").textContent = "план " + hm(P.ph);
   $("planIncome").textContent = money((P.fh + leftH) * s.rate);
   $("planIncomeHint").textContent = `на сегодня ~ ${money((rpd + vpd) * s.rate)} (реал + виртуал)`;
+  $("needOrdersToday").textContent = opd;
+  $("needOrdersTodayHint").textContent = `при плане ${hm(hpd)} (${todayOrdersPerHour.toFixed(2)} заказ/час)`;
   $("leftOrders").textContent = leftO;
-  $("dayPlanHint").textContent = `на день: реал ${hm(rpd)} + виртуал ${hm(vpd)}`;
+  $("dayPlanHint").textContent = `к добивке: реал ${hm(leftReal)} + виртуал ${hm(leftVirt)}`;
   $("needCoef").textContent = needCoefRemain.toFixed(2);
   $("needCoefHint").textContent = `сейчас факт ${coef.toFixed(2)} | цель ${safeCoef.toFixed(2)}`;
   $("leftRealStat").textContent = hm(leftReal);
@@ -418,9 +421,11 @@ function render() {
       ? `<div class=main>Минимум выполнен, но лучше держать запас до ${safeCoef.toFixed(2)}.</div>`
       : `<div class=main>Коэффициент с запасом (${safeCoef.toFixed(2)}), фокус на заработке по часам.</div>`;
   const tips = `${coefBlock}
+    <div><b>Где смотреть заказы:</b> «Нужно заказов сегодня» и «Нужно заказов на период» в блоке показателей.</div>
     <div><b>Что сделать сегодня:</b> ${opd} заказов, реал ${hm(rpd)} и виртуал ${hm(vpd)}.</div>
     <div><b>Остаток по активным дням:</b> реал ${hm(leftReal)} и виртуал ${hm(leftVirt)}.</div>
     <div><b>Темп на сегодня:</b> ${todayOrdersPerHour.toFixed(2)} заказ/час при плане ${hm(hpd)}.</div>
+    <div><b>Как считается:</b> остаток заказов = ceil((факт+остаток часов)*кэф_с_запасом) - факт заказов.</div>
     <div><b>Проверка в конце дня:</b> факт часов ≥ ${hm(hpd)} и факт заказов ≥ ${opd}.</div>
     <div><b>Контроль периода:</b> чтобы закрыть остаток, держите минимум ${needCoefRemain.toFixed(2)} заказ/час.</div>
     ${overflowH > 0 ? `<div><b>Внимание:</b> не помещается ${hm(overflowH)} в лимиты дней (12ч/день и лимит реала).</div>` : ""}
