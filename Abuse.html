@@ -101,6 +101,7 @@ const K3 = "courierPlan_auth_v1";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
+let lastDynamicPlan = null;
 
 const D = {
   target: 1.6,
@@ -449,6 +450,11 @@ function render() {
 
   const orderWeights = activeOrderIdx.map((idx) => Math.max(0, planRByIdx[idx] + planVByIdx[idx]));
   distributeIntsByWeights(leftO, orderWeights).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
+  lastDynamicPlan = {
+    planRByIdx: planRByIdx.slice(),
+    planVByIdx: planVByIdx.slice(),
+    planOByIdx: planOByIdx.slice(),
+  };
 
   const n = activeAnyIdx.length;
   const nextDayIdx = n ? activeAnyIdx[0] : -1;
@@ -767,8 +773,14 @@ function bindPlannerEvents() {
   $("applyGoal").onclick = applyGoal;
   $("copyPlanToFact").onclick = () => {
     const a = loadRows();
-    const c = (+$("target").value || 1.6) + Math.max(0, +$("coefReserve").value || 0);
-    a.forEach((x) => { x.fr = x.pr; x.fv = x.pv; x.fo = x.pr > 0 ? planOrd(x.pr, x.pv, c) : 0; });
+    if (!lastDynamicPlan) render();
+    const p = lastDynamicPlan;
+    a.forEach((x, i) => {
+      if (x.done) return;
+      x.fr = r2((p?.planRByIdx?.[i]) || 0);
+      x.fv = r2((p?.planVByIdx?.[i]) || 0);
+      x.fo = Math.max(0, Math.round((p?.planOByIdx?.[i]) || 0));
+    });
     saveRows(a); render();
   };
   $("reset").onclick = () => {
