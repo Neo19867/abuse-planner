@@ -64,7 +64,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div class="card"><h1>By @Neo19867</h1></div>
 <div class="card"><h2>Настройки</h2><div class="grid">
 <div><label>Целевой коэффициент</label><input id="target" type="number" step="0.01" value="1.6"></div>
-<div><label>Запас к кэфу</label><input id="coefReserve" type="number" step="0.01" value="0.10"></div>
+<div><label>Запас к кэфу</label><input id="coefReserve" type="number" step="0.01" value="0.01"></div>
 <div><label>Доход за час (₽)</label><input id="rate" type="number" value="400"></div>
 <div><label>Формат недели</label><select id="weekType"><option value="5">5 рабочих дней</option><option value="7">7 рабочих дней</option></select></div>
 <div><label>Цель часов в день</label><input id="goalValue" type="number" value="10"></div>
@@ -101,7 +101,7 @@ let isPlannerBound = false;
 
 const D = {
   target: 1.6,
-  coefReserve: 0.10,
+  coefReserve: 0.01,
   rate: 400,
   weekType: "5",
   goalValue: 10,
@@ -179,7 +179,7 @@ function readSet() {
 
 function writeSet(s) {
   $("target").value = s.target;
-  $("coefReserve").value = s.coefReserve ?? 0.10;
+  $("coefReserve").value = s.coefReserve ?? 0.01;
   $("rate").value = s.rate;
   $("weekType").value = s.weekType;
   $("goalValue").value = s.goalValue;
