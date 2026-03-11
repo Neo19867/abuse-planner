@@ -104,7 +104,7 @@ const D = {
   weekType: "5",
   goalValue: 10,
   weekdayRealDefault: 10,
-  weekdayVirtualDefault: 2,
+  weekdayVirtualDefault: 0,
   weekendVirtualDefault: 12,
   onboardingDone: false,
   hideDone: false,
@@ -188,19 +188,15 @@ function applyGoal() {
   const s = readSet();
   saveSet(s);
   const a = loadRows();
-  const rows = a.filter((x) => x.pr > 0 || x.pv > 0);
-  const ratio = rows.length
-    ? rows.reduce((p, x) => p + (x.pr > 0 ? x.pv / x.pr : 0), 0) / rows.length
-    : (s.weekdayVirtualDefault / (s.weekdayRealDefault || 1));
   a.forEach((x, i) => {
     const w = i % 7;
     const isWeekendIn5 = s.weekType === "5" && (w === 5 || w === 6);
     if (isWeekendIn5) {
       x.pr = 0;
-      x.pv = r2(s.weekendVirtualDefault);
+      x.pv = 12;
     } else {
       x.pr = r2(s.goalValue);
-      x.pv = r2(s.goalValue * (isFinite(ratio) ? ratio : 0));
+      x.pv = 0;
     }
   });
   saveRows(a);
@@ -219,7 +215,8 @@ function runFirstStartSetup() {
   s.weekType = weekType;
   s.goalValue = g;
   s.weekdayRealDefault = g;
-  s.weekdayVirtualDefault = r2(Math.max(0, g * 0.2));
+  s.weekdayVirtualDefault = 0;
+  s.weekendVirtualDefault = 12;
   s.onboardingDone = true;
   saveSet(s);
   writeSet(s);
@@ -307,8 +304,8 @@ function render() {
   $("factVirtual").textContent = hm(P.fv);
   $("factTotal").textContent = hm(P.fh);
   $("hoursHint").textContent = "план " + hm(P.fh + leftH);
-  $("planIncome").textContent = money((P.fh + leftH) * s.rate);
-  $("planIncomeHint").textContent = `на сегодня ~ ${money((rpd + vpd) * s.rate)}`;
+  $("planIncome").textContent = money((P.fr + leftReal) * s.rate);
+  $("planIncomeHint").textContent = `на сегодня ~ ${money(rpd * s.rate)} (по реальным часам)`;
   $("leftOrders").textContent = leftO;
   $("dayPlanHint").textContent = `на день: реал ${hm(rpd)} + виртуал ${hm(vpd)}`;
   $("leftRealStat").textContent = hm(leftReal);
