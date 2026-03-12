@@ -494,9 +494,7 @@ function render() {
     if (s.hideDone && x.done) return;
     const tr = document.createElement("tr");
     if (x.done) tr.className = "done";
-    const dpr = x.done ? x.pr : planRByIdx[i];
-    const dpv = x.done ? x.pv : planVByIdx[i];
-    const pr = split(dpr), pv = split(dpv), fr = split(x.fr), fv = split(x.fv);
+    const pr = split(x.pr), pv = split(x.pv), fr = split(x.fr), fv = split(x.fv);
     tr.innerHTML = `<td data-label="День">День ${i + 1}</td>
       <td data-label="План реал"><span class=time><input type=number min=0 max=24 value=${pr.h} onchange="updT(${i},'pr','h',this.value)">:<input type=number min=0 max=59 value=${pr.m} onchange="updT(${i},'pr','m',this.value)"></span></td>
       <td data-label="План вирт"><span class=time><input type=number min=0 max=24 value=${pv.h} onchange="updT(${i},'pv','h',this.value)">:<input type=number min=0 max=59 value=${pv.m} onchange="updT(${i},'pv','m',this.value)"></span></td>
