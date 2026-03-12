@@ -100,17 +100,14 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div class="stat"><div class="label2">План на сегодня</div><div class="value" id="todayPlanCompact">0 / 00:00</div><div class="label2" id="todayPlanCompactHint"></div></div>
 </div></div>
 <div class="card"><h2>Подсказки</h2><div id="tips" class="tips"></div></div>
-<div class="card"><h2>План смены</h2>
-<div style="max-width:300px"><label>Режим схем</label><select id="schemeMode"><option value="auto">Авто</option><option value="workday">Будний</option><option value="weekend">Выходной</option></select></div>
-<div id="schemeChooser" class="schemes" style="margin-top:8px"></div><div id="schemeSavedHint" style="color:var(--muted);margin:6px 0"></div><div id="todayShiftPlan" class="shift"></div>
-</div>
-<div class="card"><h2>План и факт по дням</h2><label><input id="hideDone" type="checkbox"> Скрыть выполненные</label><div class="table-wrap"><table><thead><tr><th>День</th><th>План реал</th><th>План вирт</th><th>Факт реал</th><th>Факт вирт</th><th>Факт заказы</th><th>Нужно часов</th><th>Нужно заказов</th><th>Вып.</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+<div class="card"><h2>План на сегодня</h2><div id="todayShiftPlan" class="shift"></div></div>
+<div class="card"><h2>План и факт по дням</h2><label><input id="hideDone" type="checkbox"> Скрыть выполненные</label><div class="table-wrap"><table><thead><tr><th>День</th><th>План часы</th><th>Факт слоты</th><th>Факт часы</th><th>Факт заказы</th><th>Нужно часов</th><th>Нужно заказов</th><th>Вып.</th></tr></thead><tbody id="rows"></tbody></table></div></div>
 </div>
 <script>
 const K1 = "courierPlan_rows_v14";
 const K2 = "courierPlan_settings_v14";
 const K3 = "courierPlan_auth_v1";
-const APP_VERSION = "v1.0.0";
+const APP_VERSION = "v1.0.1";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
@@ -129,8 +126,6 @@ const D = {
   weekendVirtualDefault: 12,
   onboardingDone: false,
   hideDone: false,
-  preferredScheme: "auto",
-  schemeMode: "auto",
 };
 
 const r2 = (n) => Math.round((+n || 0) * 100) / 100;
@@ -261,15 +256,41 @@ const distributeIntsWithCaps = (total, caps, weights) => {
   }
   return out;
 };
-const empty = () => Array.from({ length: 14 }, () => ({ pr: 0, pv: 0, fr: 0, fv: 0, fo: 0, done: false }));
-const planOrd = (r, v, c) => r > 0 ? Math.ceil((+r + +v) * c) : 0;
+const parseHmToMin = (s) => {
+  const m = String(s || "").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const hh = Math.max(0, Math.min(23, +m[1]));
+  const mm = Math.max(0, Math.min(59, +m[2]));
+  return hh * 60 + mm;
+};
+const hoursFromSlots = (raw) => {
+  const txt = String(raw || "").trim();
+  if (!txt) return 0;
+  let total = 0;
+  txt.split(",").forEach((part) => {
+    const m = part.trim().match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/);
+    if (!m) return;
+    const a = parseHmToMin(m[1]);
+    const b = parseHmToMin(m[2]);
+    if (a === null || b === null) return;
+    let d = b - a;
+    if (d < 0) d += 24 * 60;
+    total += d;
+  });
+  return r2(total / 60);
+};
+const empty = () => Array.from({ length: 14 }, () => ({ ph: 0, fh: 0, fs: "", fo: 0, done: false }));
+const planOrd = (h, c) => h > 0 ? Math.ceil((+h) * c) : 0;
 
 function loadRows() {
   try {
     const a = JSON.parse(localStorage.getItem(K1) || "null");
     if (!Array.isArray(a) || a.length !== 14) return empty();
     return a.map((x) => ({
-      pr: r2(x.pr), pv: r2(x.pv), fr: r2(x.fr), fv: r2(x.fv),
+      ph: r2((+x.ph || 0) || ((+x.pr || 0) + (+x.pv || 0))),
+      fh: r2((+x.fh || 0) || ((+x.fr || 0) + (+x.fv || 0)),
+      ),
+      fs: String(x.fs || ""),
       fo: Math.max(0, Math.round(+x.fo || 0)), done: !!x.done
     }));
   } catch { return empty(); }
@@ -295,8 +316,6 @@ function readSet() {
     weekendVirtualDefault: +e.weekendVirtualDefault || D.weekendVirtualDefault,
     onboardingDone: !!e.onboardingDone,
     hideDone: $("hideDone").checked,
-    preferredScheme: e.preferredScheme || "auto",
-    schemeMode: $("schemeMode").value,
   };
 }
 
@@ -310,7 +329,6 @@ function writeSet(s) {
   $("weekendVirtualMax").value = s.weekendVirtualMax ?? 12;
   $("ordersPerDay").value = s.ordersPerDay ?? 25;
   $("hideDone").checked = !!s.hideDone;
-  $("schemeMode").value = s.schemeMode || "auto";
 }
 
 function buildTemplate() {
@@ -338,8 +356,8 @@ function applyGoal() {
   const workIdx = [];
   a.forEach((_, i) => ((i % 7) < workDaysPerWeek ? workIdx : offIdx).push(i));
 
-  const pvByIdx = Array(14).fill(0);
-  workIdx.forEach((idx) => { pvByIdx[idx] = workVirtDaily; });
+  const phByIdx = Array(14).fill(0);
+  workIdx.forEach((idx) => { phByIdx[idx] = r2(realDaily + workVirtDaily); });
 
   const offCap = offDaysPeriod * weekendVirtMax;
   const offGive = Math.min(weekendVirtNeed, offCap);
@@ -348,13 +366,11 @@ function applyGoal() {
     offIdx,
     offIdx.map(() => Math.round(weekendVirtMax * 60)),
   );
-  offSeqM.forEach((m, k) => { pvByIdx[offIdx[k]] = r2(m / 60); });
-  enforceSecondWeekend12ByWeek(pvByIdx, workDaysPerWeek);
+  offSeqM.forEach((m, k) => { phByIdx[offIdx[k]] = r2(m / 60); });
+  enforceSecondWeekend12ByWeek(phByIdx, workDaysPerWeek);
 
   a.forEach((x, i) => {
-    const isWorkDay = (i % 7) < workDaysPerWeek;
-    x.pr = isWorkDay ? realDaily : 0;
-    x.pv = r2(pvByIdx[i] || 0);
+    x.ph = r2(phByIdx[i] || 0);
   });
   saveRows(a);
   render();
@@ -392,111 +408,54 @@ function render() {
   const safeCoef = r2((s.target || 0) + (s.coefReserve || 0));
   const a = loadRows();
   const e = a.map((x) => {
-    const ph = x.pr + x.pv;
-    const po = x.pr > 0 ? planOrd(x.pr, x.pv, safeCoef) : 0;
-    const fh = x.fr + x.fv;
-    return { ...x, ph, po, fh, lo: Math.max(0, po - x.fo) };
+    const ph = r2(x.ph || 0);
+    const fh = x.fs ? hoursFromSlots(x.fs) : r2(x.fh || 0);
+    const po = ph > 0 ? planOrd(ph, safeCoef) : 0;
+    return { ...x, ph, fh, po };
   });
 
   const P = {
     po: e.reduce((p, x) => p + x.po, 0),
     fo: e.reduce((p, x) => p + x.fo, 0),
-    pr: e.reduce((p, x) => p + x.pr, 0),
-    pv: e.reduce((p, x) => p + x.pv, 0),
-    fr: e.reduce((p, x) => p + x.fr, 0),
-    fv: e.reduce((p, x) => p + x.fv, 0),
     ph: e.reduce((p, x) => p + x.ph, 0),
     fh: e.reduce((p, x) => p + x.fh, 0),
   };
-  const leftReal = r2(Math.max(0, P.pr - P.fr));
-  const leftVirt = r2(Math.max(0, P.pv - P.fv));
-  const leftH = r2(leftReal + leftVirt);
+  const leftH = r2(Math.max(0, P.ph - P.fh));
   const workDaysPerWeek = Math.max(1, Math.min(7, Math.round(+s.workDaysPerWeek || 5)));
   const requiredTotalOrdersBase = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
-  const requiredTotalOrdersByCoef = Math.max(0, Math.ceil((P.fh + leftH) * safeCoef));
-  // Приоритет — гарантированно выйти на целевой кэф по итоговым часам периода.
-  const requiredTotalOrders = requiredTotalOrdersByCoef;
+  const requiredTotalOrders = Math.max(0, Math.ceil((P.fh + leftH) * safeCoef));
   const leftO = Math.max(0, requiredTotalOrders - P.fo);
 
   const activeAnyIdx = [];
   const activeOrderIdx = [];
-  const activeRealIdx = [];
   e.forEach((x, i) => {
     if (x.done) return;
-    // Для добивки часов/кэфа используем любой незакрытый день, даже если в шаблоне там 00:00.
     activeAnyIdx.push(i);
-    if (x.pr > 0) activeOrderIdx.push(i);
-    if (x.pr > 0) activeRealIdx.push(i);
+    if ((i % 7) < workDaysPerWeek) activeOrderIdx.push(i);
   });
 
-  const planOByIdx = Array(e.length).fill(0);
-  const planRByIdx = Array(e.length).fill(0);
-  const planVByIdx = Array(e.length).fill(0);
   const weekendVirtualMax = Math.max(0, Math.min(12, r2(s.weekendVirtualMax || 0)));
-  const totalCapsByIdx = Array(e.length).fill(0);
-  activeAnyIdx.forEach((idx) => {
+  const planHByIdx = Array(e.length).fill(0);
+  const planOByIdx = Array(e.length).fill(0);
+  const capsM = activeAnyIdx.map((idx) => {
     const isWorkDay = (idx % 7) < workDaysPerWeek;
     const dayCap = isWorkDay ? 12 : weekendVirtualMax;
-    totalCapsByIdx[idx] = Math.max(0, dayCap - e[idx].fh);
+    return Math.max(0, Math.round((dayCap - e[idx].fh) * 60));
   });
+  const weights = activeAnyIdx.map((idx) => Math.max(0, e[idx].ph - e[idx].fh));
+  const allocHoursM = distributeIntsWithCaps(Math.round(leftH * 60), capsM, weights);
+  allocHoursM.forEach((m, i) => { planHByIdx[activeAnyIdx[i]] = r2(m / 60); });
 
-  const realCaps = activeRealIdx.map((idx) => Math.max(0, Math.min(totalCapsByIdx[idx], (+s.realHoursPerWorkday || 0) - e[idx].fr) * 60));
-  const realWeights = activeRealIdx.map((idx) => Math.max(0, (e[idx].pr - e[idx].fr)));
-  const realAllocM = distributeIntsWithCaps(Math.round(leftReal * 60), realCaps, realWeights);
-  realAllocM.forEach((m, i) => { planRByIdx[activeRealIdx[i]] = r2(m / 60); });
-  const leftRealM = Math.round(leftReal * 60);
-  const leftVirtM = Math.round(leftVirt * 60);
-  const allocRealM = realAllocM.reduce((p, x) => p + x, 0);
-  const realShortM = Math.max(0, leftRealM - allocRealM);
-  // Если реал не помещается в лимит по realHoursPerWorkday, добираем этот дефицит виртуалом.
-  const virtNeedM = leftVirtM + realShortM;
-
-  const workVirtIdx = activeAnyIdx.filter((idx) => (idx % 7) < workDaysPerWeek);
-  const offVirtIdx = activeAnyIdx.filter((idx) => (idx % 7) >= workDaysPerWeek);
-  const virtCapsByIdx = {};
-  activeAnyIdx.forEach((idx) => {
-    const usedReal = Math.round((planRByIdx[idx] || 0) * 60);
-    virtCapsByIdx[idx] = Math.max(0, Math.round(totalCapsByIdx[idx] * 60) - usedReal);
-  });
-
-  // 1) Сначала максимально переносим виртуал в будни.
-  const workCaps = workVirtIdx.map((idx) => virtCapsByIdx[idx] || 0);
-  const workWeights = workVirtIdx.map(() => 1);
-  const workVirtAllocM = distributeIntsWithCaps(virtNeedM, workCaps, workWeights);
-  let virtLeftM = virtNeedM;
-  workVirtAllocM.forEach((m, i) => {
-    const idx = workVirtIdx[i];
-    planVByIdx[idx] = r2(m / 60);
-    virtLeftM -= m;
-  });
-  virtLeftM = Math.max(0, virtLeftM);
-
-  // 2) Если после будней виртуал остался, в выходные кладем по неделе: 12:00 + остаток.
-  const offCaps = offVirtIdx.map((idx) => virtCapsByIdx[idx] || 0);
-  const offVirtAllocM = fillWeekendLumpyByWeek(virtLeftM, offVirtIdx, offCaps);
-  offVirtAllocM.forEach((m, i) => {
-    const idx = offVirtIdx[i];
-    planVByIdx[idx] = r2((planVByIdx[idx] || 0) + m / 60);
-  });
-  enforceSecondWeekend12ByWeek(planVByIdx, workDaysPerWeek);
-
-  const orderWeights = activeOrderIdx.map((idx) => Math.max(0, planRByIdx[idx] + planVByIdx[idx]));
+  const orderWeights = activeOrderIdx.map((idx) => Math.max(0, planHByIdx[idx]));
   distributeIntsByWeights(leftO, orderWeights).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
 
   const n = activeAnyIdx.length;
   const nextDayIdx = n ? activeAnyIdx[0] : -1;
   const opd = nextDayIdx >= 0 ? planOByIdx[nextDayIdx] : 0;
-  const rpd = nextDayIdx >= 0 ? planRByIdx[nextDayIdx] : 0;
-  const vpd = nextDayIdx >= 0 ? planVByIdx[nextDayIdx] : 0;
-  const hpd = r2(rpd + vpd);
-  const allocR = r2(planRByIdx.reduce((p, x) => p + x, 0));
-  const allocV = r2(planVByIdx.reduce((p, x) => p + x, 0));
-  const leftTotalM = leftRealM + leftVirtM;
-  const allocTotalM = Math.round((allocR + allocV) * 60);
-  const overflowH = r2(Math.max(0, (leftTotalM - allocTotalM) / 60));
+  const hpd = nextDayIdx >= 0 ? planHByIdx[nextDayIdx] : 0;
+  const overflowH = r2(Math.max(0, leftH - r2(planHByIdx.reduce((p, x) => p + x, 0))));
   const coef = P.fh > 0 ? P.fo / P.fh : 0;
   const needCoefRemain = leftH > 0 ? leftO / leftH : 0;
-  const todayOrdersPerHour = hpd > 0 ? opd / hpd : 0;
   const expectedOrdersTotal = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
   const projectedOrdersFinal = P.fo + leftO;
   const projectedHoursFinal = r2(P.fh + leftH);
@@ -504,180 +463,51 @@ function render() {
   const projectedOrdersToday = P.fo + opd;
   const projectedHoursToday = r2(P.fh + hpd);
   const projectedCoefToday = projectedHoursToday > 0 ? projectedOrdersToday / projectedHoursToday : 0;
-  const maxPaidHoursByExpected = safeCoef > 0 ? expectedOrdersTotal / safeCoef : 0;
-  const extraHoursPotential = r2(Math.max(0, maxPaidHoursByExpected - projectedHoursFinal));
 
   $("rows").innerHTML = "";
   e.forEach((x, i) => {
     if (s.hideDone && x.done) return;
     const tr = document.createElement("tr");
     if (x.done) tr.className = "done";
-    const pr = split(x.pr), pv = split(x.pv), fr = split(x.fr), fv = split(x.fv);
+    const ph = split(x.ph);
     tr.innerHTML = `<td data-label="День">День ${i + 1}</td>
-      <td data-label="План реал"><span class=time><input type=number min=0 max=24 value=${pr.h} onchange="updT(${i},'pr','h',this.value)">:<input type=number min=0 max=59 value=${pr.m} onchange="updT(${i},'pr','m',this.value)"></span></td>
-      <td data-label="План вирт"><span class=time><input type=number min=0 max=24 value=${pv.h} onchange="updT(${i},'pv','h',this.value)">:<input type=number min=0 max=59 value=${pv.m} onchange="updT(${i},'pv','m',this.value)"></span></td>
-      <td data-label="Факт реал"><span class=time><input type=number min=0 max=24 value=${fr.h} onchange="updT(${i},'fr','h',this.value)">:<input type=number min=0 max=59 value=${fr.m} onchange="updT(${i},'fr','m',this.value)"></span></td>
-      <td data-label="Факт вирт"><span class=time><input type=number min=0 max=24 value=${fv.h} onchange="updT(${i},'fv','h',this.value)">:<input type=number min=0 max=59 value=${fv.m} onchange="updT(${i},'fv','m',this.value)"></span></td>
+      <td data-label="План часы"><span class=time><input type=number min=0 max=24 value=${ph.h} onchange="updPH(${i},'h',this.value)">:<input type=number min=0 max=59 value=${ph.m} onchange="updPH(${i},'m',this.value)"></span></td>
+      <td data-label="Факт слоты"><input class=small-input type=text placeholder="07:30-19:30, 19:30-20:35" value="${(x.fs || "").replace(/"/g, "&quot;")}" onchange="updSlots(${i},this.value)"></td>
+      <td data-label="Факт часы">${hm(e[i].fh)}</td>
       <td data-label="Факт заказы"><input class=small-input type=number min=0 value=${x.fo} onchange="upd(${i},'fo',this.value)"></td>
-      <td data-label="Нужно часов">${x.done ? "00:00" : hm(planRByIdx[i] + planVByIdx[i])}</td>
+      <td data-label="Нужно часов">${x.done ? "00:00" : hm(planHByIdx[i])}</td>
       <td data-label="Нужно заказов">${x.done ? 0 : planOByIdx[i]}</td>
       <td data-label="Выполнен"><input type=checkbox ${x.done ? "checked" : ""} onchange="upd(${i},'done',this.checked)"></td>`;
     $("rows").appendChild(tr);
   });
 
-  setText("factOrders", P.fo);
-  setText("ordersHint", `план ${requiredTotalOrders} (по кэфу; база была ${requiredTotalOrdersBase})`);
   setText("factCoef", coef.toFixed(2));
-  setText("factReal", hm(P.fr));
-  setText("factVirtual", hm(P.fv));
-  setText("factTotal", hm(P.fh));
-  setText("hoursHint", "план " + hm(P.ph));
   setText("planIncome", money((P.fh + leftH) * s.rate));
-  setText("planIncomeHint", `на сегодня ~ ${money((rpd + vpd) * s.rate)} (реал + виртуал)`);
+  setText("planIncomeHint", `на сегодня ~ ${money(hpd * s.rate)} (по плану часов)`);
   setText("projectedCoef", projectedCoefFinal.toFixed(2));
   setText("projectedCoefHint", `цель ${safeCoef.toFixed(2)} | заказов ${projectedOrdersFinal}, часов ${hm(projectedHoursFinal)}`);
   setText("projectedCoefToday", projectedCoefToday.toFixed(2));
   setText("projectedCoefTodayHint", `если сегодня сделать ${opd} заказов за ${hm(hpd)} (будет ${projectedOrdersToday}/${hm(projectedHoursToday)})`);
-  setText("extraHoursPotential", hm(extraHoursPotential));
-  setText("extraHoursHint", `по ожиданию ${expectedOrdersTotal} заказов (макс до ${hm(maxPaidHoursByExpected)})`);
-  setText("needOrdersToday", opd);
-  setText("needOrdersTodayHint", `при плане ${hm(hpd)} (${todayOrdersPerHour.toFixed(2)} заказ/час)`);
-  setText("leftOrders", leftO);
-  setText("dayPlanHint", `к добивке: реал ${hm(leftReal)} + виртуал ${hm(leftVirt)}`);
-  setText("needCoef", needCoefRemain.toFixed(2));
-  setText("needCoefHint", `сейчас факт ${coef.toFixed(2)} | цель ${safeCoef.toFixed(2)}`);
-  setText("leftRealStat", hm(leftReal));
-  setText("leftVirtStat", hm(leftVirt));
-  setText("activeDays", n);
-  setText("doneDays", e.filter((x) => x.done).length);
-  setText("coefStatus", coef >= safeCoef ? "Коэффициент с запасом" : coef >= s.target ? "Коэффициент в минимуме" : "Ниже минимума");
   setText("todayPlanCompact", `${opd} / ${hm(hpd)}`);
-  setText("todayPlanCompactHint", `сегодня: ${opd} заказов при ${hm(rpd)} реал + ${hm(vpd)} вирт`);
+  setText("todayPlanCompactHint", `сегодня: ${opd} заказов за ${hm(hpd)}`);
   setText("quickCoefTarget", safeCoef.toFixed(2));
   setText("quickTodayText", `Сегодня: ${opd} заказов и ${hm(hpd)} часов.`);
+  setText("coefStatus", coef >= safeCoef ? "Коэффициент с запасом" : coef >= s.target ? "Коэффициент в минимуме" : "Ниже минимума");
 
-  const weekend = (s.schemeMode === "weekend") || (s.schemeMode === "auto" && rpd <= 0.01 && vpd > 0.01);
   const coefBlock = coef < s.target
     ? `<div class=main>Приоритет: подтянуть коэффициент до минимума ${s.target.toFixed(2)}.</div>`
     : coef < safeCoef
       ? `<div class=main>Минимум выполнен, но лучше держать запас до ${safeCoef.toFixed(2)}.</div>`
       : `<div class=main>Коэффициент с запасом (${safeCoef.toFixed(2)}), фокус на заработке по часам.</div>`;
-  const tips = `${coefBlock}
+  $("tips").innerHTML = `${coefBlock}
     <div><b>Сегодня:</b> ${opd} заказов и ${hm(hpd)} часов.</div>
-    <div><b>Остаток:</b> реал ${hm(leftReal)}, вирт ${hm(leftVirt)}, нужно кэф ${needCoefRemain.toFixed(2)}.</div>
+    <div><b>Остаток:</b> часы ${hm(leftH)}, нужно кэф ${needCoefRemain.toFixed(2)}.</div>
     ${overflowH > 0 ? `<div><b>Внимание:</b> не помещается ${hm(overflowH)} в лимиты.</div>` : ""}`;
-  $("tips").innerHTML = tips;
 
   const nextDayNum = nextDayIdx >= 0 ? nextDayIdx + 1 : null;
-  const virt = vpd;
-  const pauseCap = rpd >= 10 ? 2 : 0;
-  const dNeed = r2(Math.max(0, virt - pauseCap));
-  let opts = [], rec = "pause_only";
-  if (n) {
-    if (weekend) {
-      opts = [
-        { id: "weekend_pause", name: "Паузы в своём районе", desc: "Просто, но медленно", feasible: true },
-        { id: "weekend_district", name: "12ч слот в другом районе", desc: "Быстрее, нужна поездка", feasible: true },
-      ];
-      rec = virt > 2 ? "weekend_district" : "weekend_pause";
-    } else {
-      if (pauseCap > 0) {
-        opts = [
-          { id: "pause_only", name: "Только паузами", desc: "Без поездки", feasible: true },
-          { id: "district_only", name: "Добивка районом", desc: "12ч слот в другом районе", feasible: true },
-          { id: "hybrid", name: "Смешанная схема", desc: `Паузы + район, районом добрать ${hm(dNeed)}`, feasible: true },
-        ];
-        rec = (virt <= pauseCap) ? "pause_only" : (virt <= pauseCap + 12) ? "hybrid" : "district_only";
-      } else {
-        opts = [
-          { id: "local_virtual", name: "Добрать в своем районе", desc: `После реала добрать виртуал ${hm(virt)}`, feasible: true },
-          { id: "district_only", name: "Добивка районом", desc: "12ч слот в другом районе (если нужен быстрый длинный виртуал)", feasible: true },
-        ];
-        rec = virt <= 2 ? "local_virtual" : "district_only";
-      }
-    }
-  }
-  let sel = s.preferredScheme;
-  const selectedOpt = opts.find((o) => o.id === sel);
-  if (!selectedOpt || selectedOpt.feasible === false) {
-    sel = rec;
-    s.preferredScheme = sel;
-    saveSet(s);
-  }
-  $("schemeChooser").innerHTML = opts.map((o) => `<button class="scheme ${sel === o.id ? "active" : ""}" data-scheme="${o.id}"><b>${o.name}${o.id === rec ? " (рекоменд.)" : ""}</b><div style="color:var(--muted)">${o.desc}${o.feasible === false ? " (сейчас недоступно)" : ""}</div></button>`).join("");
-  $("schemeSavedHint").textContent = n ? `Режим: ${s.schemeMode}. Выбрано: ${sel}.` : "Нет активных дней";
-
-  const sb = 8 * 60;
-  const nine = 9 * 60;
-  const realMinutes = Math.round(rpd * 60);
-  const reFrom9 = nine + realMinutes;
-  const virtMin = Math.round(virt * 60);
-  const pauseA = Math.min(60, Math.round(virt * 60)); // вариант А: 08:00-09:00 преднабор
-  const virtLeftAfterA = Math.max(0, Math.round(virt * 60) - pauseA);
-  const pauseB = Math.min(60, Math.round(virt * 60)); // вариант Б: пауза после реала
-  const virtLeftAfterB = Math.max(0, Math.round(virt * 60) - pauseB);
-  const pickSlotHours = (fromMin, needUntilMin) => {
-    const needMin = Math.max(0, needUntilMin - fromMin);
-    const h = Math.ceil(needMin / 60);
-    return Math.max(10, Math.min(12, h || 10));
-  };
-
-  let p = `<div class=title>Понятная схема на сегодня${nextDayNum ? ` (день ${nextDayNum})` : ""}</div>`;
-  p += `<div class=step><b>Цель:</b> ${opd} заказов, реал ${hm(rpd)}, виртуал ${hm(vpd)}.</div>`;
-  if (!n) {
-    p += `<div class=step>Активных дней нет.</div>`;
-  } else if (sel === "weekend_district" || sel === "district_only") {
-    p += `<div class=step>1. Доехать в район с доступным 12ч слотом.</div>`;
-    p += `<div class=step>2. Открыть слот, поставить паузу, уехать обратно.</div>`;
-    p += `<div class=step>3. Набрать виртуал до цели ${hm(vpd)}.</div>`;
-  } else if (sel === "local_virtual") {
-    const preferA = rpd >= 9.5 && virt <= 1.05;
-    const pauseEndA = sb + pauseA;
-    const workStartA = Math.max(nine, pauseEndA);
-    const workEndA = workStartA + realMinutes;
-    const slotA = pickSlotHours(nine, workEndA + virtLeftAfterA);
-    p += `<div class=step><b>Рекомендация:</b> ${preferA ? "Вариант A" : "Вариант B"}.</div>`;
-    p += `<div class=step><b>Вариант A (08:00 + пауза):</b></div>`;
-    p += `<div class=step>1. 08:00 открыть слот на 10–12ч и сразу взять паузу ${hhmm(pauseA)} (до ${hhmm(pauseEndA)}).</div>`;
-    p += `<div class=step>2. В ${hhmm(pauseEndA)} закрыть этот слот, открыть новый на ${slotA} ч (до ${hhmm(nine + slotA * 60)}).</div>`;
-    p += `<div class=step>3. ${hhmm(workStartA)}-${hhmm(workEndA)}: реальная работа ${hm(rpd)}.</div>`;
-    if (virtLeftAfterA > 0) p += `<div class=step>4. Остаток виртуала ${hhmm(virtLeftAfterA)} добрать после реала.</div>`;
-    p += `<div class=step><b>Вариант B (старт в 09:00):</b></div>`;
-    p += `<div class=step>1. В 09:00 открыть слот на 10–12ч.</div>`;
-    p += `<div class=step>2. 09:00-${hhmm(reFrom9)}: отработать реал ${hm(rpd)}.</div>`;
-    if (pauseB > 0) p += `<div class=step>3. Взять паузу ${hhmm(pauseB)} и закрыть слот.</div>`;
-    if (virtLeftAfterB > 0) p += `<div class=step>4. Остаток виртуала ${hhmm(virtLeftAfterB)} добрать отдельным коротким выходом.</div>`;
-  } else if (sel === "hybrid") {
-    if (pauseA > 0) p += `<div class=step>1. 08:00-09:00: пауза (преднабор виртуала).</div>`;
-    p += `<div class=step>${pauseA > 0 ? "2" : "1"}. 09:00-${hhmm(reFrom9)}: реальная работа.</div>`;
-    p += `<div class=step>${pauseA > 0 ? "3" : "2"}. Остаток виртуала ${hm(dNeed)} добрать через район.</div>`;
-  } else if (sel === "pause_only") {
-    const firstPause = Math.min(60, virtMin);
-    const secondPause = Math.min(60, Math.max(0, virtMin - firstPause));
-    const virtRemain = Math.max(0, virtMin - firstPause - secondPause);
-    const workStart = firstPause > 0 ? nine : sb;
-    const workEnd = workStart + realMinutes;
-    const slotAfter9 = pickSlotHours(nine, workEnd + secondPause);
-    p += `<div class=step>1. ${hhmm(sb)}: открыть слот 10–12ч.</div>`;
-    if (firstPause > 0) {
-      p += `<div class=step>2. ${hhmm(sb)}-${hhmm(sb + firstPause)}: пауза (${hhmm(firstPause)} виртуала).</div>`;
-      p += `<div class=step>3. ${hhmm(sb + firstPause)}: закрыть слот и сразу открыть новый на ${slotAfter9} ч (до ${hhmm(nine + slotAfter9 * 60)}).</div>`;
-      p += `<div class=step>4. ${hhmm(workStart)}-${hhmm(workEnd)}: реальная работа ${hm(rpd)}.</div>`;
-    } else {
-      p += `<div class=step>2. ${hhmm(workStart)}-${hhmm(workEnd)}: реальная работа ${hm(rpd)}.</div>`;
-    }
-    if (secondPause > 0) {
-      p += `<div class=step>${firstPause > 0 ? "5" : "3"}. ${hhmm(workEnd)}-${hhmm(workEnd + secondPause)}: пауза (${hhmm(secondPause)} виртуала).</div>`;
-    }
-    if (virtRemain > 0) {
-      p += `<div class=step><b>Остаток виртуала:</b> ${hhmm(virtRemain)} добрать отдельным коротким выходом.</div>`;
-    }
-  } else {
-    p += `<div class=step>1. В 09:00 выйти на линию.</div>`;
-    p += `<div class=step>2. 09:00-${hhmm(reFrom9)}: реальная работа ${hm(rpd)}.</div>`;
-    if (virt > 0) p += `<div class=step>3. Добор виртуала ${hm(virt)}: через паузу в конце или отдельным коротким выходом.</div>`;
-  }
-  $("todayShiftPlan").innerHTML = p;
+  $("todayShiftPlan").innerHTML = `<div class=title>План на сегодня${nextDayNum ? ` (день ${nextDayNum})` : ""}</div>
+    <div class=step><b>Цель:</b> ${opd} заказов и ${hm(hpd)} часов.</div>
+    <div class=step>Вводите факт слотами: <code>07:30-19:30, 19:30-20:35</code>.</div>`;
 }
 
 function upd(i, f, v) {
@@ -688,18 +518,27 @@ function upd(i, f, v) {
   saveRows(a);
   render();
 }
-function updT(i, f, p, v) {
+function updPH(i, p, v) {
   const a = loadRows();
   if (!a[i]) return;
-  const c = split(a[i][f]);
+  const c = split(a[i].ph);
   if (p === "h") c.h = Math.max(0, Math.min(24, Math.round(+v || 0)));
   if (p === "m") c.m = Math.max(0, Math.min(59, Math.round(+v || 0)));
-  a[i][f] = comp(c.h, c.m);
+  a[i].ph = comp(c.h, c.m);
+  saveRows(a);
+  render();
+}
+function updSlots(i, v) {
+  const a = loadRows();
+  if (!a[i]) return;
+  a[i].fs = String(v || "").trim();
+  a[i].fh = hoursFromSlots(a[i].fs);
   saveRows(a);
   render();
 }
 window.upd = upd;
-window.updT = updT;
+window.updPH = updPH;
+window.updSlots = updSlots;
 
 function setupMatrixBackground() {
   const canvas = $("matrix-bg");
@@ -806,7 +645,7 @@ function checkSession() {
 function bindPlannerEvents() {
   if (isPlannerBound) return;
   isPlannerBound = true;
-  ["target","coefReserve","rate","workDaysPerWeek","realHoursPerWorkday","virtualHoursPerWorkday","weekendVirtualMax","ordersPerDay","hideDone","schemeMode"]
+  ["target","coefReserve","rate","workDaysPerWeek","realHoursPerWorkday","virtualHoursPerWorkday","weekendVirtualMax","ordersPerDay","hideDone"]
     .forEach((id) => { $(id).addEventListener("input", render); $(id).addEventListener("change", render); });
   ["weekendVirtualMax"].forEach((id) => {
     $(id).addEventListener("change", () => applyGoal());
@@ -821,14 +660,6 @@ function bindPlannerEvents() {
     runFirstStartSetup();
     render();
   };
-  $("schemeChooser").addEventListener("click", (e) => {
-    const b = e.target.closest("button[data-scheme]");
-    if (!b) return;
-    const s2 = readSet();
-    s2.preferredScheme = b.dataset.scheme;
-    saveSet(s2);
-    render();
-  });
 }
 
 function initPlanner() {
