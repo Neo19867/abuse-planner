@@ -82,6 +82,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div class="stat"><div class="label2">Факт всего</div><div class="value" id="factTotal">00:00</div><div class="label2" id="hoursHint"></div></div>
 <div class="stat"><div class="label2">План доход</div><div class="value" id="planIncome">0 ₽</div><div class="label2" id="planIncomeHint"></div></div>
 <div class="stat"><div class="label2">Прогноз кэф (конец периода)</div><div class="value" id="projectedCoef">0</div><div class="label2" id="projectedCoefHint"></div></div>
+<div class="stat"><div class="label2">Прогноз кэф на сегодня</div><div class="value" id="projectedCoefToday">0</div><div class="label2" id="projectedCoefTodayHint"></div></div>
 <div class="stat"><div class="label2">Можно докрутить часов</div><div class="value" id="extraHoursPotential">00:00</div><div class="label2" id="extraHoursHint"></div></div>
 <div class="stat"><div class="label2">Нужно заказов сегодня</div><div class="value" id="needOrdersToday">0</div><div class="label2" id="needOrdersTodayHint"></div></div>
 <div class="stat"><div class="label2">Нужно заказов на период</div><div class="value" id="leftOrders">0</div><div class="label2" id="dayPlanHint"></div></div>
@@ -487,6 +488,9 @@ function render() {
   const projectedOrdersFinal = P.fo + leftO;
   const projectedHoursFinal = r2(P.fh + leftH);
   const projectedCoefFinal = projectedHoursFinal > 0 ? projectedOrdersFinal / projectedHoursFinal : 0;
+  const projectedOrdersToday = P.fo + opd;
+  const projectedHoursToday = r2(P.fh + hpd);
+  const projectedCoefToday = projectedHoursToday > 0 ? projectedOrdersToday / projectedHoursToday : 0;
   const maxPaidHoursByExpected = safeCoef > 0 ? expectedOrdersTotal / safeCoef : 0;
   const extraHoursPotential = r2(Math.max(0, maxPaidHoursByExpected - projectedHoursFinal));
 
@@ -523,6 +527,8 @@ function render() {
   $("planIncomeHint").textContent = `на сегодня ~ ${money((rpd + vpd) * s.rate)} (реал + виртуал)`;
   $("projectedCoef").textContent = projectedCoefFinal.toFixed(2);
   $("projectedCoefHint").textContent = `цель ${safeCoef.toFixed(2)} | заказов ${projectedOrdersFinal}, часов ${hm(projectedHoursFinal)}`;
+  $("projectedCoefToday").textContent = projectedCoefToday.toFixed(2);
+  $("projectedCoefTodayHint").textContent = `если сегодня сделать ${opd} заказов за ${hm(hpd)} (будет ${projectedOrdersToday}/${hm(projectedHoursToday)})`;
   $("extraHoursPotential").textContent = hm(extraHoursPotential);
   $("extraHoursHint").textContent = `по ожиданию ${expectedOrdersTotal} заказов (макс до ${hm(maxPaidHoursByExpected)})`;
   $("needOrdersToday").textContent = opd;
