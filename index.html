@@ -68,7 +68,9 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div><label>Доход за час (₽)</label><input id="rate" type="number" value="400"></div>
 <div><label>Реально работаете (дн/нед)</label><select id="workDaysPerWeek"><option value="1">1 день</option><option value="2">2 дня</option><option value="3">3 дня</option><option value="4">4 дня</option><option value="5" selected>5 дней</option><option value="6">6 дней</option><option value="7">7 дней</option></select></div>
 <div><label>План реальных часов в рабочий день</label><input id="realHoursPerWorkday" type="number" value="10"></div>
-<div><label>План заказов в рабочий день</label><input id="ordersPerDay" type="number" value="21"></div>
+<div><label>Виртуал в рабочий день (ч)</label><input id="virtualHoursPerWorkday" type="number" value="2"></div>
+<div><label>Ожидаемые заказы в рабочий день</label><input id="ordersPerDay" type="number" value="25"></div>
+<div><label>Макс вирт в выходной день (ч)</label><input id="weekendVirtualMax" type="number" value="12"></div>
 </div><div class="actions" style="margin-top:8px">
 <button id="applyGoal">Применить цель</button><button id="reset">Сброс</button>
 </div></div>
@@ -79,6 +81,8 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div class="stat"><div class="label2">Факт виртуал</div><div class="value" id="factVirtual">00:00</div><div class="label2">в часах</div></div>
 <div class="stat"><div class="label2">Факт всего</div><div class="value" id="factTotal">00:00</div><div class="label2" id="hoursHint"></div></div>
 <div class="stat"><div class="label2">План доход</div><div class="value" id="planIncome">0 ₽</div><div class="label2" id="planIncomeHint"></div></div>
+<div class="stat"><div class="label2">Прогноз кэф (конец периода)</div><div class="value" id="projectedCoef">0</div><div class="label2" id="projectedCoefHint"></div></div>
+<div class="stat"><div class="label2">Можно докрутить часов</div><div class="value" id="extraHoursPotential">00:00</div><div class="label2" id="extraHoursHint"></div></div>
 <div class="stat"><div class="label2">Нужно заказов сегодня</div><div class="value" id="needOrdersToday">0</div><div class="label2" id="needOrdersTodayHint"></div></div>
 <div class="stat"><div class="label2">Нужно заказов на период</div><div class="value" id="leftOrders">0</div><div class="label2" id="dayPlanHint"></div></div>
 <div class="stat"><div class="label2">Нужно кэф на остаток</div><div class="value" id="needCoef">0</div><div class="label2" id="needCoefHint"></div></div>
@@ -98,7 +102,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 const K1 = "courierPlan_rows_v14";
 const K2 = "courierPlan_settings_v14";
 const K3 = "courierPlan_auth_v1";
-const APP_VERSION = "v2026.03.11-1";
+const APP_VERSION = "v2026.03.12-1";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
@@ -109,9 +113,11 @@ const D = {
   rate: 400,
   workDaysPerWeek: "5",
   realHoursPerWorkday: 10,
-  ordersPerDay: 21,
+  virtualHoursPerWorkday: 2,
+  weekendVirtualMax: 12,
+  ordersPerDay: 25,
   weekdayRealDefault: 10,
-  weekdayVirtualDefault: 0,
+  weekdayVirtualDefault: 2,
   weekendVirtualDefault: 12,
   onboardingDone: false,
   hideDone: false,
@@ -272,6 +278,8 @@ function readSet() {
     rate: +$("rate").value || 0,
     workDaysPerWeek: String(Math.max(1, Math.min(7, Math.round(+$("workDaysPerWeek").value || 5)))),
     realHoursPerWorkday: Math.max(0, r2(+$("realHoursPerWorkday").value || 0)),
+    virtualHoursPerWorkday: Math.max(0, r2(+$("virtualHoursPerWorkday").value || 0)),
+    weekendVirtualMax: Math.max(0, Math.min(12, r2(+$("weekendVirtualMax").value || 0))),
     ordersPerDay: Math.max(0, Math.round(+$("ordersPerDay").value || 0)),
     weekdayRealDefault: +e.weekdayRealDefault || D.weekdayRealDefault,
     weekdayVirtualDefault: +e.weekdayVirtualDefault || D.weekdayVirtualDefault,
@@ -289,7 +297,9 @@ function writeSet(s) {
   $("rate").value = s.rate;
   $("workDaysPerWeek").value = s.workDaysPerWeek || "5";
   $("realHoursPerWorkday").value = s.realHoursPerWorkday ?? 10;
-  $("ordersPerDay").value = s.ordersPerDay ?? 21;
+  $("virtualHoursPerWorkday").value = s.virtualHoursPerWorkday ?? 2;
+  $("weekendVirtualMax").value = s.weekendVirtualMax ?? 12;
+  $("ordersPerDay").value = s.ordersPerDay ?? 25;
   $("hideDone").checked = !!s.hideDone;
   $("schemeMode").value = s.schemeMode || "auto";
 }
@@ -304,33 +314,31 @@ function applyGoal() {
   const a = loadRows();
   const workDaysPerWeek = Math.max(1, Math.min(7, Math.round(+s.workDaysPerWeek || 5)));
   const workDaysPeriod = workDaysPerWeek * 2;
-  const offDaysPeriod = 14 - workDaysPeriod;
+  const offDaysPeriod = Math.max(0, 14 - workDaysPeriod);
   const safeCoef = r2((s.target || 0) + (s.coefReserve || 0));
-  const totalOrdersTarget = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPeriod));
+  const totalOrdersTarget = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPeriod)); // ожидаемый объем заказов
   const maxTotalHours = 14 * 12;
-  const totalHoursTargetRaw = safeCoef > 0 ? totalOrdersTarget / safeCoef : 0;
-  const totalHoursTarget = Math.min(maxTotalHours, totalHoursTargetRaw);
+  const totalHoursTarget = safeCoef > 0 ? Math.min(maxTotalHours, totalOrdersTarget / safeCoef) : 0;
   const realDaily = Math.min(12, Math.max(0, r2(s.realHoursPerWorkday || 0)));
-  const realTotal = r2(realDaily * workDaysPeriod);
-  let virtualNeed = Math.max(0, r2(totalHoursTarget - realTotal));
+  const workVirtDaily = Math.max(0, Math.min(12 - realDaily, r2(s.virtualHoursPerWorkday || 0)));
+  const weekendVirtMax = Math.max(0, Math.min(12, r2(s.weekendVirtualMax || 12)));
+  const baseWorkHours = r2((realDaily + workVirtDaily) * workDaysPeriod);
+  let weekendVirtNeed = Math.max(0, r2(totalHoursTarget - baseWorkHours));
 
   const offIdx = [];
   const workIdx = [];
   a.forEach((_, i) => ((i % 7) < workDaysPerWeek ? workIdx : offIdx).push(i));
 
   const pvByIdx = Array(14).fill(0);
-  // Сначала стараемся уместить виртуал в будни, чтобы по возможности освободить выходные.
-  const workVirtCapPerDay = Math.max(0, 12 - realDaily);
-  const workCap = workIdx.length * workVirtCapPerDay;
-  const workGive = Math.min(virtualNeed, workCap);
-  distributeHours(workGive, workIdx.length).forEach((v, k) => {
-    pvByIdx[workIdx[k]] = Math.min(workVirtCapPerDay, v);
-  });
-  virtualNeed = r2(Math.max(0, virtualNeed - workGive));
+  workIdx.forEach((idx) => { pvByIdx[idx] = workVirtDaily; });
 
-  const offCap = offIdx.length * 12;
-  const offGive = Math.min(virtualNeed, offCap);
-  const offSeqM = fillWeekendLumpyByWeek(Math.round(offGive * 60), offIdx, offIdx.map(() => 12 * 60));
+  const offCap = offDaysPeriod * weekendVirtMax;
+  const offGive = Math.min(weekendVirtNeed, offCap);
+  const offSeqM = fillWeekendLumpyByWeek(
+    Math.round(offGive * 60),
+    offIdx,
+    offIdx.map(() => Math.round(weekendVirtMax * 60)),
+  );
   offSeqM.forEach((m, k) => { pvByIdx[offIdx[k]] = r2(m / 60); });
   enforceSecondWeekend12ByWeek(pvByIdx, workDaysPerWeek);
 
@@ -348,15 +356,19 @@ function runFirstStartSetup() {
   if (s.onboardingDone) return s;
   const wdRaw = prompt("Сколько дней в неделю сможете реально работать? (1..7)", "5");
   const rhRaw = prompt("Сколько реальных часов в рабочий день планируете? (например 10)", "10");
-  const opdRaw = prompt("Сколько в среднем заказов в рабочий день планируете делать?", "21");
+  const vhRaw = prompt("Сколько виртуальных часов в рабочий день обычно делаете? (например 2)", "2");
+  const opdRaw = prompt("Сколько в среднем заказов в рабочий день планируете делать?", "25");
   const workDays = Math.max(1, Math.min(7, Math.round(+wdRaw || 5)));
   const realH = Math.max(0, r2(+rhRaw || 10));
+  const virtH = Math.max(0, r2(+vhRaw || 2));
   const opd = Math.max(0, Math.round(+opdRaw || 0));
   s.workDaysPerWeek = String(workDays);
   s.realHoursPerWorkday = realH;
+  s.virtualHoursPerWorkday = virtH;
+  s.weekendVirtualMax = 12;
   s.ordersPerDay = opd;
   s.weekdayRealDefault = realH;
-  s.weekdayVirtualDefault = 0;
+  s.weekdayVirtualDefault = virtH;
   s.weekendVirtualDefault = 12;
   s.onboardingDone = true;
   saveSet(s);
@@ -471,6 +483,12 @@ function render() {
   const coef = P.fh > 0 ? P.fo / P.fh : 0;
   const needCoefRemain = leftH > 0 ? leftO / leftH : 0;
   const todayOrdersPerHour = hpd > 0 ? opd / hpd : 0;
+  const expectedOrdersTotal = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
+  const projectedOrdersFinal = P.fo + leftO;
+  const projectedHoursFinal = r2(P.fh + leftH);
+  const projectedCoefFinal = projectedHoursFinal > 0 ? projectedOrdersFinal / projectedHoursFinal : 0;
+  const maxPaidHoursByExpected = safeCoef > 0 ? expectedOrdersTotal / safeCoef : 0;
+  const extraHoursPotential = r2(Math.max(0, maxPaidHoursByExpected - projectedHoursFinal));
 
   $("rows").innerHTML = "";
   e.forEach((x, i) => {
@@ -503,6 +521,10 @@ function render() {
   $("hoursHint").textContent = "план " + hm(P.ph);
   $("planIncome").textContent = money((P.fh + leftH) * s.rate);
   $("planIncomeHint").textContent = `на сегодня ~ ${money((rpd + vpd) * s.rate)} (реал + виртуал)`;
+  $("projectedCoef").textContent = projectedCoefFinal.toFixed(2);
+  $("projectedCoefHint").textContent = `цель ${safeCoef.toFixed(2)} | заказов ${projectedOrdersFinal}, часов ${hm(projectedHoursFinal)}`;
+  $("extraHoursPotential").textContent = hm(extraHoursPotential);
+  $("extraHoursHint").textContent = `по ожиданию ${expectedOrdersTotal} заказов (макс до ${hm(maxPaidHoursByExpected)})`;
   $("needOrdersToday").textContent = opd;
   $("needOrdersTodayHint").textContent = `при плане ${hm(hpd)} (${todayOrdersPerHour.toFixed(2)} заказ/час)`;
   $("leftOrders").textContent = leftO;
@@ -522,6 +544,7 @@ function render() {
       ? `<div class=main>Минимум выполнен, но лучше держать запас до ${safeCoef.toFixed(2)}.</div>`
       : `<div class=main>Коэффициент с запасом (${safeCoef.toFixed(2)}), фокус на заработке по часам.</div>`;
   const tips = `${coefBlock}
+    <div><b>Логика калькулятора:</b> максимум оплачиваемых часов при кэфе не ниже ${s.target.toFixed(2)} (с запасом до ${safeCoef.toFixed(2)}).</div>
     <div><b>Где смотреть заказы:</b> «Нужно заказов сегодня» и «Нужно заказов на период» в блоке показателей.</div>
     <div><b>Что сделать сегодня:</b> ${opd} заказов, реал ${hm(rpd)} и виртуал ${hm(vpd)}.</div>
     <div><b>Остаток по активным дням:</b> реал ${hm(leftReal)} и виртуал ${hm(leftVirt)}.</div>
@@ -771,7 +794,7 @@ function checkSession() {
 function bindPlannerEvents() {
   if (isPlannerBound) return;
   isPlannerBound = true;
-  ["target","coefReserve","rate","workDaysPerWeek","realHoursPerWorkday","ordersPerDay","hideDone","schemeMode"]
+  ["target","coefReserve","rate","workDaysPerWeek","realHoursPerWorkday","virtualHoursPerWorkday","weekendVirtualMax","ordersPerDay","hideDone","schemeMode"]
     .forEach((id) => { $(id).addEventListener("input", render); $(id).addEventListener("change", render); });
   $("applyGoal").onclick = applyGoal;
   $("reset").onclick = () => {
