@@ -75,35 +75,24 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <button id="applyGoal">Применить цель</button><button id="reset">Сброс</button>
 </div></div>
 <div class="card"><h2>Показатели</h2><div class="stats">
-<div class="stat"><div class="label2">Факт заказы</div><div class="value" id="factOrders">0</div><div id="ordersHint" class="label2"></div></div>
 <div class="stat"><div class="label2">Коэффициент</div><div class="value" id="factCoef">0</div><div id="coefStatus" class="label2"></div></div>
-<div class="stat"><div class="label2">Факт реал</div><div class="value" id="factReal">00:00</div><div class="label2">в часах</div></div>
-<div class="stat"><div class="label2">Факт виртуал</div><div class="value" id="factVirtual">00:00</div><div class="label2">в часах</div></div>
-<div class="stat"><div class="label2">Факт всего</div><div class="value" id="factTotal">00:00</div><div class="label2" id="hoursHint"></div></div>
 <div class="stat"><div class="label2">План доход</div><div class="value" id="planIncome">0 ₽</div><div class="label2" id="planIncomeHint"></div></div>
 <div class="stat"><div class="label2">Прогноз кэф (конец периода)</div><div class="value" id="projectedCoef">0</div><div class="label2" id="projectedCoefHint"></div></div>
 <div class="stat"><div class="label2">Прогноз кэф на сегодня</div><div class="value" id="projectedCoefToday">0</div><div class="label2" id="projectedCoefTodayHint"></div></div>
-<div class="stat"><div class="label2">Можно докрутить часов</div><div class="value" id="extraHoursPotential">00:00</div><div class="label2" id="extraHoursHint"></div></div>
-<div class="stat"><div class="label2">Нужно заказов сегодня</div><div class="value" id="needOrdersToday">0</div><div class="label2" id="needOrdersTodayHint"></div></div>
-<div class="stat"><div class="label2">Нужно заказов на период</div><div class="value" id="leftOrders">0</div><div class="label2" id="dayPlanHint"></div></div>
-<div class="stat"><div class="label2">Нужно кэф на остаток</div><div class="value" id="needCoef">0</div><div class="label2" id="needCoefHint"></div></div>
-<div class="stat"><div class="label2">Остаток реал</div><div class="value" id="leftRealStat">00:00</div><div class="label2">по активным дням</div></div>
-<div class="stat"><div class="label2">Остаток виртуал</div><div class="value" id="leftVirtStat">00:00</div><div class="label2">по активным дням</div></div>
-<div class="stat"><div class="label2">Активные дни</div><div class="value" id="activeDays">0</div><div class="label2">дней в работе</div></div>
-<div class="stat"><div class="label2">Выполненные дни</div><div class="value" id="doneDays">0</div><div class="label2">из 14</div></div>
+<div class="stat"><div class="label2">План на сегодня</div><div class="value" id="todayPlanCompact">0 / 00:00</div><div class="label2" id="todayPlanCompactHint"></div></div>
 </div></div>
 <div class="card"><h2>Подсказки</h2><div id="tips" class="tips"></div></div>
 <div class="card"><h2>План смены</h2>
 <div style="max-width:300px"><label>Режим схем</label><select id="schemeMode"><option value="auto">Авто</option><option value="workday">Будний</option><option value="weekend">Выходной</option></select></div>
 <div id="schemeChooser" class="schemes" style="margin-top:8px"></div><div id="schemeSavedHint" style="color:var(--muted);margin:6px 0"></div><div id="todayShiftPlan" class="shift"></div>
 </div>
-<div class="card"><h2>План и факт по дням</h2><label><input id="hideDone" type="checkbox"> Скрыть выполненные</label><div class="table-wrap"><table><thead><tr><th>День</th><th>План реал</th><th>План вирт</th><th>План часы</th><th>План заказы</th><th>Факт реал</th><th>Факт вирт</th><th>Факт часы</th><th>Факт заказы</th><th>Нужно часов</th><th>Нужно заказов</th><th>Вып.</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+<div class="card"><h2>План и факт по дням</h2><label><input id="hideDone" type="checkbox"> Скрыть выполненные</label><div class="table-wrap"><table><thead><tr><th>День</th><th>План реал</th><th>План вирт</th><th>Факт реал</th><th>Факт вирт</th><th>Факт заказы</th><th>Нужно часов</th><th>Нужно заказов</th><th>Вып.</th></tr></thead><tbody id="rows"></tbody></table></div></div>
 </div>
 <script>
 const K1 = "courierPlan_rows_v14";
 const K2 = "courierPlan_settings_v14";
 const K3 = "courierPlan_auth_v1";
-const APP_VERSION = "v2026.03.12-1";
+const APP_VERSION = "v2026.03.12-2";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
@@ -128,6 +117,7 @@ const D = {
 
 const r2 = (n) => Math.round((+n || 0) * 100) / 100;
 const money = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(+n || 0)) + " ₽";
+const setText = (id, value) => { const el = $(id); if (el) el.textContent = value; };
 const split = (h) => { const m = Math.max(0, Math.round((+h || 0) * 60)); return { h: Math.floor(m / 60), m: m % 60 }; };
 const comp = (h, m) => r2((Math.max(0, Math.round(+h || 0)) * 60 + Math.round(Math.max(0, Math.min(59, +m || 0)) / 5) * 5) / 60);
 const hhmm = (m) => { m = Math.max(0, Math.round(+m || 0)); return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
@@ -510,10 +500,8 @@ function render() {
     tr.innerHTML = `<td data-label="День">День ${i + 1}</td>
       <td data-label="План реал"><span class=time><input type=number min=0 max=24 value=${pr.h} onchange="updT(${i},'pr','h',this.value)">:<input type=number min=0 max=59 value=${pr.m} onchange="updT(${i},'pr','m',this.value)"></span></td>
       <td data-label="План вирт"><span class=time><input type=number min=0 max=24 value=${pv.h} onchange="updT(${i},'pv','h',this.value)">:<input type=number min=0 max=59 value=${pv.m} onchange="updT(${i},'pv','m',this.value)"></span></td>
-      <td data-label="План часы">${hm(x.done ? x.ph : (planRByIdx[i] + planVByIdx[i]))}</td><td data-label="План заказы">${x.done ? x.po : planOByIdx[i]}</td>
       <td data-label="Факт реал"><span class=time><input type=number min=0 max=24 value=${fr.h} onchange="updT(${i},'fr','h',this.value)">:<input type=number min=0 max=59 value=${fr.m} onchange="updT(${i},'fr','m',this.value)"></span></td>
       <td data-label="Факт вирт"><span class=time><input type=number min=0 max=24 value=${fv.h} onchange="updT(${i},'fv','h',this.value)">:<input type=number min=0 max=59 value=${fv.m} onchange="updT(${i},'fv','m',this.value)"></span></td>
-      <td data-label="Факт часы">${hm(x.fh)}</td>
       <td data-label="Факт заказы"><input class=small-input type=number min=0 value=${x.fo} onchange="upd(${i},'fo',this.value)"></td>
       <td data-label="Нужно часов">${x.done ? "00:00" : hm(planRByIdx[i] + planVByIdx[i])}</td>
       <td data-label="Нужно заказов">${x.done ? 0 : planOByIdx[i]}</td>
@@ -521,32 +509,34 @@ function render() {
     $("rows").appendChild(tr);
   });
 
-  $("factOrders").textContent = P.fo;
-  $("ordersHint").textContent = `план ${requiredTotalOrders} (по кэфу; база была ${requiredTotalOrdersBase})`;
-  $("factCoef").textContent = coef.toFixed(2);
-  $("factReal").textContent = hm(P.fr);
-  $("factVirtual").textContent = hm(P.fv);
-  $("factTotal").textContent = hm(P.fh);
-  $("hoursHint").textContent = "план " + hm(P.ph);
-  $("planIncome").textContent = money((P.fh + leftH) * s.rate);
-  $("planIncomeHint").textContent = `на сегодня ~ ${money((rpd + vpd) * s.rate)} (реал + виртуал)`;
-  $("projectedCoef").textContent = projectedCoefFinal.toFixed(2);
-  $("projectedCoefHint").textContent = `цель ${safeCoef.toFixed(2)} | заказов ${projectedOrdersFinal}, часов ${hm(projectedHoursFinal)}`;
-  $("projectedCoefToday").textContent = projectedCoefToday.toFixed(2);
-  $("projectedCoefTodayHint").textContent = `если сегодня сделать ${opd} заказов за ${hm(hpd)} (будет ${projectedOrdersToday}/${hm(projectedHoursToday)})`;
-  $("extraHoursPotential").textContent = hm(extraHoursPotential);
-  $("extraHoursHint").textContent = `по ожиданию ${expectedOrdersTotal} заказов (макс до ${hm(maxPaidHoursByExpected)})`;
-  $("needOrdersToday").textContent = opd;
-  $("needOrdersTodayHint").textContent = `при плане ${hm(hpd)} (${todayOrdersPerHour.toFixed(2)} заказ/час)`;
-  $("leftOrders").textContent = leftO;
-  $("dayPlanHint").textContent = `к добивке: реал ${hm(leftReal)} + виртуал ${hm(leftVirt)}`;
-  $("needCoef").textContent = needCoefRemain.toFixed(2);
-  $("needCoefHint").textContent = `сейчас факт ${coef.toFixed(2)} | цель ${safeCoef.toFixed(2)}`;
-  $("leftRealStat").textContent = hm(leftReal);
-  $("leftVirtStat").textContent = hm(leftVirt);
-  $("activeDays").textContent = n;
-  $("doneDays").textContent = e.filter((x) => x.done).length;
-  $("coefStatus").textContent = coef >= safeCoef ? "Коэффициент с запасом" : coef >= s.target ? "Коэффициент в минимуме" : "Ниже минимума";
+  setText("factOrders", P.fo);
+  setText("ordersHint", `план ${requiredTotalOrders} (по кэфу; база была ${requiredTotalOrdersBase})`);
+  setText("factCoef", coef.toFixed(2));
+  setText("factReal", hm(P.fr));
+  setText("factVirtual", hm(P.fv));
+  setText("factTotal", hm(P.fh));
+  setText("hoursHint", "план " + hm(P.ph));
+  setText("planIncome", money((P.fh + leftH) * s.rate));
+  setText("planIncomeHint", `на сегодня ~ ${money((rpd + vpd) * s.rate)} (реал + виртуал)`);
+  setText("projectedCoef", projectedCoefFinal.toFixed(2));
+  setText("projectedCoefHint", `цель ${safeCoef.toFixed(2)} | заказов ${projectedOrdersFinal}, часов ${hm(projectedHoursFinal)}`);
+  setText("projectedCoefToday", projectedCoefToday.toFixed(2));
+  setText("projectedCoefTodayHint", `если сегодня сделать ${opd} заказов за ${hm(hpd)} (будет ${projectedOrdersToday}/${hm(projectedHoursToday)})`);
+  setText("extraHoursPotential", hm(extraHoursPotential));
+  setText("extraHoursHint", `по ожиданию ${expectedOrdersTotal} заказов (макс до ${hm(maxPaidHoursByExpected)})`);
+  setText("needOrdersToday", opd);
+  setText("needOrdersTodayHint", `при плане ${hm(hpd)} (${todayOrdersPerHour.toFixed(2)} заказ/час)`);
+  setText("leftOrders", leftO);
+  setText("dayPlanHint", `к добивке: реал ${hm(leftReal)} + виртуал ${hm(leftVirt)}`);
+  setText("needCoef", needCoefRemain.toFixed(2));
+  setText("needCoefHint", `сейчас факт ${coef.toFixed(2)} | цель ${safeCoef.toFixed(2)}`);
+  setText("leftRealStat", hm(leftReal));
+  setText("leftVirtStat", hm(leftVirt));
+  setText("activeDays", n);
+  setText("doneDays", e.filter((x) => x.done).length);
+  setText("coefStatus", coef >= safeCoef ? "Коэффициент с запасом" : coef >= s.target ? "Коэффициент в минимуме" : "Ниже минимума");
+  setText("todayPlanCompact", `${opd} / ${hm(hpd)}`);
+  setText("todayPlanCompactHint", `сегодня: ${opd} заказов при ${hm(rpd)} реал + ${hm(vpd)} вирт`);
 
   const weekend = (s.schemeMode === "weekend") || (s.schemeMode === "auto" && rpd <= 0.01 && vpd > 0.01);
   const coefBlock = coef < s.target
@@ -555,16 +545,9 @@ function render() {
       ? `<div class=main>Минимум выполнен, но лучше держать запас до ${safeCoef.toFixed(2)}.</div>`
       : `<div class=main>Коэффициент с запасом (${safeCoef.toFixed(2)}), фокус на заработке по часам.</div>`;
   const tips = `${coefBlock}
-    <div><b>Логика калькулятора:</b> максимум оплачиваемых часов при кэфе не ниже ${s.target.toFixed(2)} (с запасом до ${safeCoef.toFixed(2)}).</div>
-    <div><b>Где смотреть заказы:</b> «Нужно заказов сегодня» и «Нужно заказов на период» в блоке показателей.</div>
-    <div><b>Что сделать сегодня:</b> ${opd} заказов, реал ${hm(rpd)} и виртуал ${hm(vpd)}.</div>
-    <div><b>Остаток по активным дням:</b> реал ${hm(leftReal)} и виртуал ${hm(leftVirt)}.</div>
-    <div><b>Темп на сегодня:</b> ${todayOrdersPerHour.toFixed(2)} заказ/час при плане ${hm(hpd)}.</div>
-    <div><b>Как считается:</b> цель заказов = ceil((факт+остаток часов)*кэф_с_запасом).</div>
-    <div><b>Проверка в конце дня:</b> факт часов ≥ ${hm(hpd)} и факт заказов ≥ ${opd}.</div>
-    <div><b>Контроль периода:</b> чтобы закрыть остаток, держите минимум ${needCoefRemain.toFixed(2)} заказ/час.</div>
-    ${overflowH > 0 ? `<div><b>Внимание:</b> не помещается ${hm(overflowH)} в лимиты дней (12ч/день и лимит реала).</div>` : ""}
-    ${rpd < 10 && !weekend ? `<div><b>Почему так:</b> при реале меньше 10ч пауза-бонус недоступен.</div>` : ""}`;
+    <div><b>Сегодня:</b> ${opd} заказов и ${hm(hpd)} часов.</div>
+    <div><b>Остаток:</b> реал ${hm(leftReal)}, вирт ${hm(leftVirt)}, нужно кэф ${needCoefRemain.toFixed(2)}.</div>
+    ${overflowH > 0 ? `<div><b>Внимание:</b> не помещается ${hm(overflowH)} в лимиты.</div>` : ""}`;
   $("tips").innerHTML = tips;
 
   const nextDayNum = nextDayIdx >= 0 ? nextDayIdx + 1 : null;
