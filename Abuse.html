@@ -424,8 +424,13 @@ function render() {
   const planOByIdx = Array(e.length).fill(0);
   const planRByIdx = Array(e.length).fill(0);
   const planVByIdx = Array(e.length).fill(0);
+  const weekendVirtualMax = Math.max(0, Math.min(12, r2(s.weekendVirtualMax || 0)));
   const totalCapsByIdx = Array(e.length).fill(0);
-  activeAnyIdx.forEach((idx) => { totalCapsByIdx[idx] = Math.max(0, 12 - e[idx].fh); });
+  activeAnyIdx.forEach((idx) => {
+    const isWorkDay = (idx % 7) < workDaysPerWeek;
+    const dayCap = isWorkDay ? 12 : weekendVirtualMax;
+    totalCapsByIdx[idx] = Math.max(0, dayCap - e[idx].fh);
+  });
 
   const realCaps = activeRealIdx.map((idx) => Math.max(0, Math.min(totalCapsByIdx[idx], (+s.realHoursPerWorkday || 0) - e[idx].fr) * 60));
   const realWeights = activeRealIdx.map((idx) => Math.max(0, (e[idx].pr - e[idx].fr)));
@@ -802,6 +807,9 @@ function bindPlannerEvents() {
   isPlannerBound = true;
   ["target","coefReserve","rate","workDaysPerWeek","realHoursPerWorkday","virtualHoursPerWorkday","weekendVirtualMax","ordersPerDay","hideDone","schemeMode"]
     .forEach((id) => { $(id).addEventListener("input", render); $(id).addEventListener("change", render); });
+  ["weekendVirtualMax"].forEach((id) => {
+    $(id).addEventListener("change", () => applyGoal());
+  });
   $("applyGoal").onclick = applyGoal;
   $("reset").onclick = () => {
     localStorage.removeItem(K1);
