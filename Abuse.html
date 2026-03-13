@@ -78,7 +78,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div><label>Ожидаемые заказы в рабочий день</label><input id="ordersPerDay" type="number" inputmode="numeric" value="25"></div>
 <div><label>Макс вирт в выходной день (ч)</label><input id="weekendVirtualMax" type="number" inputmode="decimal" value="12"></div>
 </div><div class="actions" style="margin-top:8px">
-<button id="applyGoal">Применить цель</button><button id="reset">Сброс</button>
+<button id="applyGoal">Применить цель</button><button id="exportData">Сохранить данные</button><button id="importData">Загрузить данные</button><button id="reset">Сброс</button>
 </div></div>
 <div class="card"><h2>Быстрый старт (для новичка)</h2>
   <div class="quick">
@@ -107,7 +107,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 const K1 = "courierPlan_rows_v14";
 const K2 = "courierPlan_settings_v14";
 const K3 = "courierPlan_auth_v1";
-const APP_VERSION = "v1.0.1";
+const APP_VERSION = "v1.0.2";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
@@ -299,6 +299,28 @@ const saveRows = (a) => localStorage.setItem(K1, JSON.stringify(a));
 
 function loadSet() { try { return { ...D, ...JSON.parse(localStorage.getItem(K2) || "{}") }; } catch { return { ...D }; } }
 const saveSet = (s) => localStorage.setItem(K2, JSON.stringify(s));
+const exportPayload = () => JSON.stringify({
+  app: "shift-coef-planner",
+  version: APP_VERSION,
+  exportedAt: new Date().toISOString(),
+  settings: loadSet(),
+  rows: loadRows(),
+});
+const importPayload = (raw) => {
+  let p = null;
+  try { p = JSON.parse(String(raw || "")); } catch { throw new Error("Неверный JSON."); }
+  if (!p || !Array.isArray(p.rows) || p.rows.length !== 14) throw new Error("Неверный формат данных.");
+  const rows = p.rows.map((x) => ({
+    ph: r2(+x.ph || 0),
+    fh: r2(+x.fh || 0),
+    fs: String(x.fs || ""),
+    fo: Math.max(0, Math.round(+x.fo || 0)),
+    done: !!x.done,
+  }));
+  const settings = { ...D, ...(p.settings || {}) };
+  saveRows(rows);
+  saveSet(settings);
+};
 
 function readSet() {
   const e = loadSet();
@@ -651,6 +673,28 @@ function bindPlannerEvents() {
     $(id).addEventListener("change", () => applyGoal());
   });
   $("applyGoal").onclick = applyGoal;
+  $("exportData").onclick = async () => {
+    const payload = exportPayload();
+    let copied = false;
+    try {
+      await navigator.clipboard.writeText(payload);
+      copied = true;
+    } catch {}
+    prompt(copied ? "Данные скопированы. Сохраните этот код для другого устройства:" : "Скопируйте этот код для другого устройства:", payload);
+  };
+  $("importData").onclick = () => {
+    const raw = prompt("Вставьте код данных, который сохранили на другом устройстве:");
+    if (!raw) return;
+    try {
+      importPayload(raw);
+      const s2 = loadSet();
+      writeSet(s2);
+      render();
+      alert("Данные загружены.");
+    } catch (err) {
+      alert(err?.message || "Не удалось загрузить данные.");
+    }
+  };
   $("reset").onclick = () => {
     localStorage.removeItem(K1);
     localStorage.removeItem(K2);
