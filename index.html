@@ -107,7 +107,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 const K1 = "courierPlan_rows_v14";
 const K2 = "courierPlan_settings_v14";
 const K3 = "courierPlan_auth_v1";
-const APP_VERSION = "v1.0.3";
+const APP_VERSION = "v1.0.4";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
@@ -481,10 +481,20 @@ function render() {
   const coef = P.fh > 0 ? P.fo / P.fh : 0;
   const needCoefRemain = leftH > 0 ? leftO / leftH : 0;
   const expectedOrdersTotal = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
-  const projectedOrdersFinal = P.fo + visibleNeedOrders;
-  const projectedHoursFinal = r2(P.fh + visibleNeedHours);
+  const baseWorkdayHours = Math.max(0.01, r2((+s.realHoursPerWorkday || 0) + (+s.virtualHoursPerWorkday || 0)));
+  const expectedOrdersPerHour = (+s.ordersPerDay || 0) / baseWorkdayHours;
+  const projectedRemainingHoursByPlan = e.reduce((sum, x) => sum + Math.max(0, x.done ? 0 : r2(x.ph - x.fh)), 0);
+  const projectedRemainingOrdersByPlan = e.reduce((sum, x, i) => {
+    if (x.done) return sum;
+    const dayRemainHours = Math.max(0, r2(x.ph - x.fh));
+    const isWorkDay = (i % 7) < workDaysPerWeek;
+    return sum + (isWorkDay ? dayRemainHours * expectedOrdersPerHour : 0);
+  }, 0);
+  const projectedOrdersFinal = Math.max(P.fo, Math.round(P.fo + projectedRemainingOrdersByPlan));
+  const projectedHoursFinal = r2(P.fh + projectedRemainingHoursByPlan);
   const projectedCoefFinal = projectedHoursFinal > 0 ? projectedOrdersFinal / projectedHoursFinal : 0;
-  const projectedOrdersToday = P.fo + opd;
+  const todayProjectedOrdersAdd = nextDayIdx >= 0 && (nextDayIdx % 7) < workDaysPerWeek ? Math.round(Math.max(0, hpd * expectedOrdersPerHour)) : 0;
+  const projectedOrdersToday = P.fo + todayProjectedOrdersAdd;
   const projectedHoursToday = r2(P.fh + hpd);
   const projectedCoefToday = projectedHoursToday > 0 ? projectedOrdersToday / projectedHoursToday : 0;
 
@@ -506,12 +516,12 @@ function render() {
   });
 
   setText("factCoef", coef.toFixed(2));
-  setText("planIncome", money((P.fh + visibleNeedHours) * s.rate));
+  setText("planIncome", money((P.fh + projectedRemainingHoursByPlan) * s.rate));
   setText("planIncomeHint", `на сегодня ~ ${money(hpd * s.rate)} (по плану часов)`);
   setText("projectedCoef", projectedCoefFinal.toFixed(2));
-  setText("projectedCoefHint", `цель ${safeCoef.toFixed(2)} | заказов ${projectedOrdersFinal}, часов ${hm(projectedHoursFinal)}`);
+  setText("projectedCoefHint", `по введенному плану: ${projectedOrdersFinal} заказов, ${hm(projectedHoursFinal)} часов`);
   setText("projectedCoefToday", projectedCoefToday.toFixed(2));
-  setText("projectedCoefTodayHint", `если сегодня сделать ${opd} заказов за ${hm(hpd)} (будет ${projectedOrdersToday}/${hm(projectedHoursToday)})`);
+  setText("projectedCoefTodayHint", `по плану дня: ${projectedOrdersToday} заказов, ${hm(projectedHoursToday)} часов`);
   setText("todayPlanCompact", `${opd} / ${hm(hpd)}`);
   setText("todayPlanCompactHint", `сегодня: ${opd} заказов за ${hm(hpd)}`);
   setText("quickCoefTarget", safeCoef.toFixed(2));
