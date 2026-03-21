@@ -107,7 +107,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 const K1 = "courierPlan_rows_v14";
 const K2 = "courierPlan_settings_v14";
 const K3 = "courierPlan_auth_v1";
-const APP_VERSION = "v1.0.2";
+const APP_VERSION = "v1.0.3";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
@@ -475,12 +475,14 @@ function render() {
   const nextDayIdx = n ? activeAnyIdx[0] : -1;
   const opd = nextDayIdx >= 0 ? planOByIdx[nextDayIdx] : 0;
   const hpd = nextDayIdx >= 0 ? planHByIdx[nextDayIdx] : 0;
-  const overflowH = r2(Math.max(0, leftH - r2(planHByIdx.reduce((p, x) => p + x, 0))));
+  const visibleNeedHours = r2(planHByIdx.reduce((p, x) => p + x, 0));
+  const visibleNeedOrders = Math.max(0, Math.round(planOByIdx.reduce((p, x) => p + x, 0)));
+  const overflowH = r2(Math.max(0, leftH - visibleNeedHours));
   const coef = P.fh > 0 ? P.fo / P.fh : 0;
   const needCoefRemain = leftH > 0 ? leftO / leftH : 0;
   const expectedOrdersTotal = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
-  const projectedOrdersFinal = P.fo + leftO;
-  const projectedHoursFinal = r2(P.fh + leftH);
+  const projectedOrdersFinal = P.fo + visibleNeedOrders;
+  const projectedHoursFinal = r2(P.fh + visibleNeedHours);
   const projectedCoefFinal = projectedHoursFinal > 0 ? projectedOrdersFinal / projectedHoursFinal : 0;
   const projectedOrdersToday = P.fo + opd;
   const projectedHoursToday = r2(P.fh + hpd);
@@ -504,7 +506,7 @@ function render() {
   });
 
   setText("factCoef", coef.toFixed(2));
-  setText("planIncome", money((P.fh + leftH) * s.rate));
+  setText("planIncome", money((P.fh + visibleNeedHours) * s.rate));
   setText("planIncomeHint", `на сегодня ~ ${money(hpd * s.rate)} (по плану часов)`);
   setText("projectedCoef", projectedCoefFinal.toFixed(2));
   setText("projectedCoefHint", `цель ${safeCoef.toFixed(2)} | заказов ${projectedOrdersFinal}, часов ${hm(projectedHoursFinal)}`);
