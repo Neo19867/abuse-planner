@@ -78,7 +78,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div><label>Ожидаемые заказы в рабочий день</label><input id="ordersPerDay" type="number" inputmode="numeric" value="25"></div>
 <div><label>Макс вирт в выходной день (ч)</label><input id="weekendVirtualMax" type="number" inputmode="decimal" value="12"></div>
 </div><div class="actions" style="margin-top:8px">
-<button id="applyGoal">Применить цель</button><button id="optimizePlan">Просчитать остаток</button><button id="exportData">Сохранить данные</button><button id="importData">Загрузить данные</button><button id="reset">Сброс</button>
+<button id="applyGoal">Применить цель</button><button id="optimizePlan">Пересчитать заказы</button><button id="exportData">Сохранить данные</button><button id="importData">Загрузить данные</button><button id="reset">Сброс</button>
 </div></div>
 <div class="card"><h2>Быстрый старт (для новичка)</h2>
   <div class="quick">
@@ -108,7 +108,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 const K1 = "courierPlan_rows_v14";
 const K2 = "courierPlan_settings_v14";
 const K3 = "courierPlan_auth_v1";
-const APP_VERSION = "v1.0.5";
+const APP_VERSION = "v1.0.6";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
@@ -359,56 +359,6 @@ function buildTemplate() {
 }
 
 function optimizeRemainingPlan() {
-  const s = readSet();
-  saveSet(s);
-  const a = loadRows();
-  const workDaysPerWeek = Math.max(1, Math.min(7, Math.round(+s.workDaysPerWeek || 5)));
-  const safeCoef = r2((s.target || 0) + (s.coefReserve || 0));
-  const baseWorkHours = Math.min(12, Math.max(0, r2((+s.realHoursPerWorkday || 0) + (+s.virtualHoursPerWorkday || 0))));
-  const weekendMax = Math.max(0, Math.min(12, r2(s.weekendVirtualMax || 0)));
-
-  const rows = a.map((x) => ({
-    ...x,
-    fhCalc: x.fs ? hoursFromSlots(x.fs) : r2(x.fh || 0),
-  }));
-  const factOrders = rows.reduce((sum, x) => sum + (x.fo || 0), 0);
-  const factHours = r2(rows.reduce((sum, x) => sum + (x.fhCalc || 0), 0));
-
-  const openWorkIdx = [];
-  const openWeekendIdx = [];
-  rows.forEach((x, i) => {
-    if (x.done) return;
-    if ((i % 7) < workDaysPerWeek) openWorkIdx.push(i);
-    else openWeekendIdx.push(i);
-  });
-
-  const expectedFutureOrders = openWorkIdx.length * Math.max(0, Math.round(+s.ordersPerDay || 0));
-  const targetTotalHours = safeCoef > 0 ? r2((factOrders + expectedFutureOrders) / safeCoef) : 0;
-  let remainingHoursToPlan = Math.max(0, r2(targetTotalHours - factHours));
-
-  const newPlanByIdx = Array(rows.length).fill(0);
-  const baseWorkNeed = r2(openWorkIdx.length * baseWorkHours);
-
-  if (remainingHoursToPlan <= baseWorkNeed) {
-    const alloc = distributeHours(remainingHoursToPlan, openWorkIdx.length);
-    alloc.forEach((h, k) => { newPlanByIdx[openWorkIdx[k]] = h; });
-  } else {
-    openWorkIdx.forEach((idx) => { newPlanByIdx[idx] = baseWorkHours; });
-    remainingHoursToPlan = r2(Math.max(0, remainingHoursToPlan - baseWorkNeed));
-    const weekendAllocM = fillWeekendLumpyByWeek(
-      Math.round(remainingHoursToPlan * 60),
-      openWeekendIdx,
-      openWeekendIdx.map(() => Math.round(weekendMax * 60)),
-    );
-    weekendAllocM.forEach((m, k) => { newPlanByIdx[openWeekendIdx[k]] = r2(m / 60); });
-    enforceSecondWeekend12ByWeek(newPlanByIdx, workDaysPerWeek);
-  }
-
-  a.forEach((x, i) => {
-    if (x.done) return;
-    x.ph = r2(newPlanByIdx[i] || 0);
-  });
-  saveRows(a);
   render();
 }
 
@@ -497,11 +447,7 @@ function render() {
     ph: e.reduce((p, x) => p + x.ph, 0),
     fh: e.reduce((p, x) => p + x.fh, 0),
   };
-  const leftH = r2(Math.max(0, P.ph - P.fh));
   const workDaysPerWeek = Math.max(1, Math.min(7, Math.round(+s.workDaysPerWeek || 5)));
-  const requiredTotalOrdersBase = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
-  const requiredTotalOrders = Math.max(0, Math.ceil((P.fh + leftH) * safeCoef));
-  const leftO = Math.max(0, requiredTotalOrders - P.fo);
 
   const activeAnyIdx = [];
   const activeOrderIdx = [];
@@ -511,17 +457,15 @@ function render() {
     if ((i % 7) < workDaysPerWeek) activeOrderIdx.push(i);
   });
 
-  const weekendVirtualMax = Math.max(0, Math.min(12, r2(s.weekendVirtualMax || 0)));
   const planHByIdx = Array(e.length).fill(0);
   const planOByIdx = Array(e.length).fill(0);
-  const capsM = activeAnyIdx.map((idx) => {
-    const isWorkDay = (idx % 7) < workDaysPerWeek;
-    const dayCap = isWorkDay ? 12 : weekendVirtualMax;
-    return Math.max(0, Math.round((dayCap - e[idx].fh) * 60));
+  activeAnyIdx.forEach((idx) => {
+    planHByIdx[idx] = Math.max(0, r2(e[idx].ph - e[idx].fh));
   });
-  const weights = activeAnyIdx.map((idx) => Math.max(0, e[idx].ph - e[idx].fh));
-  const allocHoursM = distributeIntsWithCaps(Math.round(leftH * 60), capsM, weights);
-  allocHoursM.forEach((m, i) => { planHByIdx[activeAnyIdx[i]] = r2(m / 60); });
+  const visibleNeedHours = r2(planHByIdx.reduce((p, x) => p + x, 0));
+  const requiredTotalOrdersBase = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
+  const requiredTotalOrders = Math.max(0, Math.ceil((P.fh + visibleNeedHours) * safeCoef));
+  const leftO = Math.max(0, requiredTotalOrders - P.fo);
 
   const orderWeights = activeOrderIdx.map((idx) => Math.max(0, planHByIdx[idx]));
   distributeIntsByWeights(leftO, orderWeights).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
@@ -530,26 +474,13 @@ function render() {
   const nextDayIdx = n ? activeAnyIdx[0] : -1;
   const opd = nextDayIdx >= 0 ? planOByIdx[nextDayIdx] : 0;
   const hpd = nextDayIdx >= 0 ? planHByIdx[nextDayIdx] : 0;
-  const visibleNeedHours = r2(planHByIdx.reduce((p, x) => p + x, 0));
   const visibleNeedOrders = Math.max(0, Math.round(planOByIdx.reduce((p, x) => p + x, 0)));
-  const overflowH = r2(Math.max(0, leftH - visibleNeedHours));
   const coef = P.fh > 0 ? P.fo / P.fh : 0;
-  const needCoefRemain = leftH > 0 ? leftO / leftH : 0;
-  const expectedOrdersTotal = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
-  const baseWorkdayHours = Math.max(0.01, r2((+s.realHoursPerWorkday || 0) + (+s.virtualHoursPerWorkday || 0)));
-  const expectedOrdersPerHour = (+s.ordersPerDay || 0) / baseWorkdayHours;
-  const projectedRemainingHoursByPlan = e.reduce((sum, x) => sum + Math.max(0, x.done ? 0 : r2(x.ph - x.fh)), 0);
-  const projectedRemainingOrdersByPlan = e.reduce((sum, x, i) => {
-    if (x.done) return sum;
-    const dayRemainHours = Math.max(0, r2(x.ph - x.fh));
-    const isWorkDay = (i % 7) < workDaysPerWeek;
-    return sum + (isWorkDay ? dayRemainHours * expectedOrdersPerHour : 0);
-  }, 0);
-  const projectedOrdersFinal = Math.max(P.fo, Math.round(P.fo + projectedRemainingOrdersByPlan));
-  const projectedHoursFinal = r2(P.fh + projectedRemainingHoursByPlan);
+  const needCoefRemain = visibleNeedHours > 0 ? leftO / visibleNeedHours : 0;
+  const projectedHoursFinal = r2(P.fh + visibleNeedHours);
+  const projectedOrdersFinal = P.fo + visibleNeedOrders;
   const projectedCoefFinal = projectedHoursFinal > 0 ? projectedOrdersFinal / projectedHoursFinal : 0;
-  const todayProjectedOrdersAdd = nextDayIdx >= 0 && (nextDayIdx % 7) < workDaysPerWeek ? Math.round(Math.max(0, hpd * expectedOrdersPerHour)) : 0;
-  const projectedOrdersToday = P.fo + todayProjectedOrdersAdd;
+  const projectedOrdersToday = P.fo + opd;
   const projectedHoursToday = r2(P.fh + hpd);
   const projectedCoefToday = projectedHoursToday > 0 ? projectedOrdersToday / projectedHoursToday : 0;
 
@@ -571,7 +502,7 @@ function render() {
   });
 
   setText("factCoef", coef.toFixed(2));
-  setText("planIncome", money((P.fh + projectedRemainingHoursByPlan) * s.rate));
+  setText("planIncome", money((P.fh + visibleNeedHours) * s.rate));
   setText("planIncomeHint", `на сегодня ~ ${money(hpd * s.rate)} (по плану часов)`);
   setText("projectedCoef", projectedCoefFinal.toFixed(2));
   setText("projectedCoefHint", `по введенному плану: ${projectedOrdersFinal} заказов, ${hm(projectedHoursFinal)} часов`);
@@ -591,8 +522,7 @@ function render() {
       : `<div class=main>Коэффициент с запасом (${safeCoef.toFixed(2)}), фокус на заработке по часам.</div>`;
   $("tips").innerHTML = `${coefBlock}
     <div><b>Сегодня:</b> ${opd} заказов и ${hm(hpd)} часов.</div>
-    <div><b>Остаток:</b> часы ${hm(leftH)}, нужно кэф ${needCoefRemain.toFixed(2)}.</div>
-    ${overflowH > 0 ? `<div><b>Внимание:</b> не помещается ${hm(overflowH)} в лимиты.</div>` : ""}`;
+    <div><b>Остаток:</b> часы ${hm(visibleNeedHours)}, нужно кэф ${needCoefRemain.toFixed(2)}.</div>`;
 
   const nextDayNum = nextDayIdx >= 0 ? nextDayIdx + 1 : null;
   $("todayShiftPlan").innerHTML = `<div class=title>План на сегодня${nextDayNum ? ` (день ${nextDayNum})` : ""}</div>
