@@ -78,13 +78,14 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 <div><label>Ожидаемые заказы в рабочий день</label><input id="ordersPerDay" type="number" inputmode="numeric" value="25"></div>
 <div><label>Макс вирт в выходной день (ч)</label><input id="weekendVirtualMax" type="number" inputmode="decimal" value="12"></div>
 </div><div class="actions" style="margin-top:8px">
-<button id="applyGoal">Применить цель</button><button id="exportData">Сохранить данные</button><button id="importData">Загрузить данные</button><button id="reset">Сброс</button>
+<button id="applyGoal">Применить цель</button><button id="optimizePlan">Просчитать остаток</button><button id="exportData">Сохранить данные</button><button id="importData">Загрузить данные</button><button id="reset">Сброс</button>
 </div></div>
 <div class="card"><h2>Быстрый старт (для новичка)</h2>
   <div class="quick">
     <div class="item"><b>1.</b> В таблице вносите только факт: <b>часы</b> и <b>заказы</b>.</div>
     <div class="item"><b>2.</b> Смотрите карточку <b>План на сегодня</b> и делайте именно ее.</div>
     <div class="item"><b>3.</b> К концу 2 недель держите кэф не ниже цели: <span id="quickCoefTarget">1.60</span>.</div>
+    <div class="item" id="quickFactText">Уже сделано: 0 заказов и 00:00 часов.</div>
     <div class="item" id="quickTodayText">Сегодня: 0 заказов и 00:00 часов.</div>
     <div style="margin-top:6px">
       <span class="chip">Кэф = заказы / часы</span>
@@ -107,7 +108,7 @@ h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
 const K1 = "courierPlan_rows_v14";
 const K2 = "courierPlan_settings_v14";
 const K3 = "courierPlan_auth_v1";
-const APP_VERSION = "v1.0.4";
+const APP_VERSION = "v1.0.5";
 const $ = (id) => document.getElementById(id);
 const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
 let isPlannerBound = false;
@@ -357,6 +358,60 @@ function buildTemplate() {
   applyGoal();
 }
 
+function optimizeRemainingPlan() {
+  const s = readSet();
+  saveSet(s);
+  const a = loadRows();
+  const workDaysPerWeek = Math.max(1, Math.min(7, Math.round(+s.workDaysPerWeek || 5)));
+  const safeCoef = r2((s.target || 0) + (s.coefReserve || 0));
+  const baseWorkHours = Math.min(12, Math.max(0, r2((+s.realHoursPerWorkday || 0) + (+s.virtualHoursPerWorkday || 0))));
+  const weekendMax = Math.max(0, Math.min(12, r2(s.weekendVirtualMax || 0)));
+
+  const rows = a.map((x) => ({
+    ...x,
+    fhCalc: x.fs ? hoursFromSlots(x.fs) : r2(x.fh || 0),
+  }));
+  const factOrders = rows.reduce((sum, x) => sum + (x.fo || 0), 0);
+  const factHours = r2(rows.reduce((sum, x) => sum + (x.fhCalc || 0), 0));
+
+  const openWorkIdx = [];
+  const openWeekendIdx = [];
+  rows.forEach((x, i) => {
+    if (x.done) return;
+    if ((i % 7) < workDaysPerWeek) openWorkIdx.push(i);
+    else openWeekendIdx.push(i);
+  });
+
+  const expectedFutureOrders = openWorkIdx.length * Math.max(0, Math.round(+s.ordersPerDay || 0));
+  const targetTotalHours = safeCoef > 0 ? r2((factOrders + expectedFutureOrders) / safeCoef) : 0;
+  let remainingHoursToPlan = Math.max(0, r2(targetTotalHours - factHours));
+
+  const newPlanByIdx = Array(rows.length).fill(0);
+  const baseWorkNeed = r2(openWorkIdx.length * baseWorkHours);
+
+  if (remainingHoursToPlan <= baseWorkNeed) {
+    const alloc = distributeHours(remainingHoursToPlan, openWorkIdx.length);
+    alloc.forEach((h, k) => { newPlanByIdx[openWorkIdx[k]] = h; });
+  } else {
+    openWorkIdx.forEach((idx) => { newPlanByIdx[idx] = baseWorkHours; });
+    remainingHoursToPlan = r2(Math.max(0, remainingHoursToPlan - baseWorkNeed));
+    const weekendAllocM = fillWeekendLumpyByWeek(
+      Math.round(remainingHoursToPlan * 60),
+      openWeekendIdx,
+      openWeekendIdx.map(() => Math.round(weekendMax * 60)),
+    );
+    weekendAllocM.forEach((m, k) => { newPlanByIdx[openWeekendIdx[k]] = r2(m / 60); });
+    enforceSecondWeekend12ByWeek(newPlanByIdx, workDaysPerWeek);
+  }
+
+  a.forEach((x, i) => {
+    if (x.done) return;
+    x.ph = r2(newPlanByIdx[i] || 0);
+  });
+  saveRows(a);
+  render();
+}
+
 function applyGoal() {
   const s = readSet();
   saveSet(s);
@@ -525,6 +580,7 @@ function render() {
   setText("todayPlanCompact", `${opd} / ${hm(hpd)}`);
   setText("todayPlanCompactHint", `сегодня: ${opd} заказов за ${hm(hpd)}`);
   setText("quickCoefTarget", safeCoef.toFixed(2));
+  setText("quickFactText", `Уже сделано: ${P.fo} заказов и ${hm(P.fh)} часов.`);
   setText("quickTodayText", `Сегодня: ${opd} заказов и ${hm(hpd)} часов.`);
   setText("coefStatus", coef >= safeCoef ? "Коэффициент с запасом" : coef >= s.target ? "Коэффициент в минимуме" : "Ниже минимума");
 
@@ -685,6 +741,7 @@ function bindPlannerEvents() {
     $(id).addEventListener("change", () => applyGoal());
   });
   $("applyGoal").onclick = applyGoal;
+  $("optimizePlan").onclick = optimizeRemainingPlan;
   $("exportData").onclick = async () => {
     const payload = exportPayload();
     let copied = false;
