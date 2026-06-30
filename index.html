@@ -76,12 +76,10 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
     <div class="stats">
       <div class="stat primary"><div class="stat-label">Общий кэф</div><div id="factCoef" class="stat-value">0.00</div><div id="coefStatus" class="hint"></div></div>
       <div class="stat primary"><div class="stat-label">Уже сделано</div><div id="factSummary" class="stat-value">0 / 00:00</div><div class="hint">заказы / часы</div></div>
+      <div class="stat"><div class="stat-label">План часов</div><div id="planHoursSummary" class="stat-value">00:00</div><div id="planHoursHint" class="hint"></div></div>
+      <div class="stat"><div class="stat-label">Нужно заказов до конца</div><div id="missingOrders" class="stat-value">0</div><div class="hint">для минимального кэфа</div></div>
       <div class="stat"><div class="stat-label">Доход сейчас</div><div id="incomeNow" class="stat-value">0 ₽</div><div id="incomeNowHint" class="hint"></div></div>
-      <div class="stat"><div class="stat-label">Можно добавить безопасно</div><div id="safeExtraHours" class="stat-value">00:00</div><div id="safeExtraHoursHint" class="hint"></div></div>
-      <div class="stat"><div class="stat-label">Дополнительный доход</div><div id="safeExtraIncome" class="stat-value">0 ₽</div><div class="hint">если добавить часы</div></div>
-      <div class="stat"><div class="stat-label">Прогноз кэфа</div><div id="forecastCoef" class="stat-value">0.00</div><div id="forecastCoefHint" class="hint"></div></div>
-      <div class="stat"><div class="stat-label">Доход по плану</div><div id="forecastIncome" class="stat-value">0 ₽</div><div id="monthIncomeHint" class="hint"></div></div>
-      <div class="stat"><div class="stat-label">Нужно заказов до конца</div><div id="missingOrders" class="stat-value">0</div><div class="hint">по текущему плану часов</div></div>
+      <div class="stat"><div class="stat-label">Доход по плану</div><div id="forecastIncome" class="stat-value">0 ₽</div><div id="forecastIncomeHint" class="hint"></div></div>
     </div>
   </section>
 
@@ -96,14 +94,10 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
       <div class="settings-grid" style="margin-top:12px">
         <div><label>Ставка за час, ₽</label><input id="rate" type="number" inputmode="numeric" min="0" value="400"></div>
         <div><label>Минимальный кэф для выплаты</label><input id="target" type="number" inputmode="decimal" min="0" step="0.01" value="1.60"></div>
-        <div><label>Запас к кэфу</label><input id="coefReserve" type="number" inputmode="decimal" min="0" step="0.01" value="0.01"></div>
-        <div><label>Рабочих дней в неделю</label><select id="workDaysPerWeek"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option></select></div>
-        <div><label>План часов в рабочий день</label><input id="planHoursPerWorkday" type="number" inputmode="decimal" min="0" max="24" step="0.25" value="12"></div>
-        <div><label>Ожидаемые заказы в рабочий день</label><input id="ordersPerDay" type="number" inputmode="numeric" min="0" value="25"></div>
-        <div><label>План часов в выходной</label><input id="weekendPlanHours" type="number" inputmode="decimal" min="0" max="24" step="0.25" value="0"></div>
+        <div><label>Минимум часов за 2 недели</label><input id="minPeriodHours" type="number" inputmode="decimal" min="0" step="0.25" value="90"></div>
       </div>
       <div class="actions">
-        <button id="applyPlan">Заполнить план часов</button>
+        <button id="applyPlan">Заполнить будни по 10 часов</button>
         <button id="recalcOrders">Пересчитать заказы</button>
         <button id="exportData" class="secondary">Сохранить данные</button>
         <button id="importData" class="secondary">Загрузить данные</button>
@@ -126,7 +120,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.0.1";
+const APP_VERSION = "v2.1.0";
 const K_ROWS = "courierPlan_rows_v14";
 const K_SETTINGS = "courierPlan_settings_v14";
 const K_AUTH = "courierPlan_auth_v1";
@@ -147,11 +141,7 @@ const setText = (id,value) => { const el=$(id); if(el) el.textContent=value; };
 const DEFAULTS = {
   rate:400,
   target:1.6,
-  coefReserve:0.01,
-  workDaysPerWeek:"5",
-  planHoursPerWorkday:12,
-  ordersPerDay:25,
-  weekendPlanHours:0,
+  minPeriodHours:90,
   onboardingDone:true,
   hideDone:false,
 };
@@ -207,13 +197,12 @@ function loadRows(){
 function saveRows(rows){localStorage.setItem(K_ROWS,JSON.stringify(rows));}
 
 function normalizeSettings(raw={}){
-  const oldPlan=(Number(raw.realHoursPerWorkday)||0)+(Number(raw.virtualHoursPerWorkday)||0);
   return {
     ...DEFAULTS,
     ...raw,
-    workDaysPerWeek:String(Math.max(1,Math.min(7,Math.round(Number(raw.workDaysPerWeek)||5)))),
-    planHoursPerWorkday:r2(Number(raw.planHoursPerWorkday)||(oldPlan||12)),
-    weekendPlanHours:r2(Number(raw.weekendPlanHours)||0),
+    rate:Math.max(0,Number(raw.rate)||400),
+    target:Math.max(0,Number(raw.target)||1.6),
+    minPeriodHours:Math.max(0,Number(raw.minPeriodHours)||90),
   };
 }
 function loadSettings(){
@@ -225,18 +214,12 @@ function readSettings(){
     ...loadSettings(),
     rate:Number($("rate").value)||0,
     target:Number($("target").value)||0,
-    coefReserve:Math.max(0,Number($("coefReserve").value)||0),
-    workDaysPerWeek:$("workDaysPerWeek").value,
-    planHoursPerWorkday:Math.max(0,Number($("planHoursPerWorkday").value)||0),
-    ordersPerDay:Math.max(0,Math.round(Number($("ordersPerDay").value)||0)),
-    weekendPlanHours:Math.max(0,Number($("weekendPlanHours").value)||0),
+    minPeriodHours:Math.max(0,Number($("minPeriodHours").value)||0),
     hideDone:$("hideDone").checked,
   });
 }
 function writeSettings(s){
-  $("rate").value=s.rate; $("target").value=s.target; $("coefReserve").value=s.coefReserve;
-  $("workDaysPerWeek").value=s.workDaysPerWeek; $("planHoursPerWorkday").value=s.planHoursPerWorkday;
-  $("ordersPerDay").value=s.ordersPerDay; $("weekendPlanHours").value=s.weekendPlanHours;
+  $("rate").value=s.rate; $("target").value=s.target; $("minPeriodHours").value=s.minPeriodHours;
   $("hideDone").checked=Boolean(s.hideDone);
 }
 
@@ -257,16 +240,13 @@ function distributeIntegers(total,weights){
 
 function dayName(i){return `Неделя ${Math.floor(i/7)+1} · ${WEEKDAYS[i%7]}`;}
 function statusFor(coef,s,hasHours){
-  const safe=r2(s.target+s.coefReserve);
   if(!hasHours) return {text:"Нет данных",className:"muted"};
-  if(coef>=safe) return {text:"Запас есть",className:"status-good"};
-  if(coef>=s.target) return {text:"На границе",className:"status-warn"};
+  if(coef>=s.target) return {text:"Норма",className:"status-good"};
+  if(coef>=Math.max(0,s.target-0.02)) return {text:"Близко к минимуму",className:"status-warn"};
   return {text:"Риск выплаты",className:"status-danger"};
 }
 
 function calculateModel(rows,s){
-  const safeTarget=r2(s.target+s.coefReserve);
-  const workDays=Math.max(1,Math.min(7,Math.round(Number(s.workDaysPerWeek)||5)));
   const dayData=rows.map((row,i)=>{
     const parsed=parseSlots(row.fs);
     const factMinutes=row.fs ? parsed.minutes : hoursToMinutes(row.fh);
@@ -274,37 +254,29 @@ function calculateModel(rows,s){
     const remainingMinutes=row.done?0:Math.max(0,planMinutes-factMinutes);
     const orders=Math.max(0,Math.round(row.fo||0));
     const coef=factMinutes>0?orders/(factMinutes/60):0;
-    const extraMinutes=factMinutes>0&&coef>=safeTarget?Math.max(0,Math.floor(orders/safeTarget*60-factMinutes)):0;
-    return {...row,i,parsed,factMinutes,planMinutes,remainingMinutes,orders,coef,extraMinutes,isWorkDay:(i%7)<workDays};
+    return {...row,i,parsed,factMinutes,planMinutes,remainingMinutes,orders,coef,isWorkDay:(i%7)<5};
   });
   const factMinutes=dayData.reduce((sum,x)=>sum+x.factMinutes,0);
   const factOrders=dayData.reduce((sum,x)=>sum+x.orders,0);
   const factCoef=factMinutes>0?factOrders/(factMinutes/60):0;
   const factIncome=factMinutes/60*s.rate;
   const remainingMinutes=dayData.reduce((sum,x)=>sum+x.remainingMinutes,0);
-  const forecastMinutes=factMinutes+remainingMinutes;
-  const expectedOrdersPerHour=s.planHoursPerWorkday>0?s.ordersPerDay/s.planHoursPerWorkday:0;
-  const forecastAddedOrders=dayData.reduce((sum,x)=>sum+(x.isWorkDay?x.remainingMinutes/60*expectedOrdersPerHour:0),0);
-  const forecastOrders=Math.max(factOrders,Math.round(factOrders+forecastAddedOrders));
-  const forecastCoef=forecastMinutes>0?forecastOrders/(forecastMinutes/60):0;
-  const forecastIncome=forecastMinutes/60*s.rate;
-  const requiredFinalOrders=forecastMinutes>0?Math.ceil(forecastMinutes/60*safeTarget):0;
+  const plannedFinalMinutes=factMinutes+remainingMinutes;
+  const minPeriodMinutes=hoursToMinutes(s.minPeriodHours);
+  const targetPeriodMinutes=Math.max(minPeriodMinutes,plannedFinalMinutes);
+  const planShortfallMinutes=Math.max(0,minPeriodMinutes-plannedFinalMinutes);
+  const requiredFinalOrders=targetPeriodMinutes>0?Math.ceil(targetPeriodMinutes/60*s.target):0;
   const remainingOrdersNeeded=Math.max(0,requiredFinalOrders-factOrders);
-  const orderDays=dayData.filter(x=>!x.done&&x.isWorkDay);
+  const orderDays=dayData.filter(x=>!x.done&&x.isWorkDay&&x.remainingMinutes>0);
   const orderAlloc=distributeIntegers(remainingOrdersNeeded,orderDays.map(x=>x.remainingMinutes));
   const needOrdersByIndex=Array(14).fill(0);
   orderDays.forEach((x,k)=>{needOrdersByIndex[x.i]=orderAlloc[k]||0;});
   const unallocatedOrders=Math.max(0,remainingOrdersNeeded-orderAlloc.reduce((a,b)=>a+b,0));
-  const safeFactMinutesByOrders=safeTarget>0?Math.floor(factOrders/safeTarget*60):0;
-  const maxFactMinutesByOrders=s.target>0?Math.floor(factOrders/s.target*60):0;
-  const safeExtraMinutes=Math.max(0,safeFactMinutesByOrders-factMinutes);
-  const maxExtraMinutes=Math.max(0,maxFactMinutesByOrders-factMinutes);
-  const maxForecastMinutesByOrders=safeTarget>0?Math.floor(forecastOrders/safeTarget*60):0;
-  const safePlanExtraMinutes=Math.max(0,maxForecastMinutesByOrders-forecastMinutes);
-  const missingOrdersNow=Math.max(0,Math.ceil(factMinutes/60*safeTarget)-factOrders);
-  const missingOrdersForecast=Math.max(0,requiredFinalOrders-forecastOrders);
-  const nextDay=dayData.find(x=>!x.done)||null;
-  return {s,safeTarget,dayData,factMinutes,factOrders,factCoef,factIncome,remainingMinutes,forecastMinutes,forecastOrders,forecastCoef,forecastIncome,requiredFinalOrders,remainingOrdersNeeded,needOrdersByIndex,unallocatedOrders,safeExtraMinutes,maxExtraMinutes,safePlanExtraMinutes,missingOrdersNow,missingOrdersForecast,nextDay};
+  const plannedCoef=targetPeriodMinutes>0?requiredFinalOrders/(targetPeriodMinutes/60):0;
+  const plannedIncome=targetPeriodMinutes/60*s.rate;
+  const missingOrdersNow=Math.max(0,Math.ceil(factMinutes/60*s.target)-factOrders);
+  const nextDay=dayData.find(x=>!x.done&&(x.remainingMinutes>0||needOrdersByIndex[x.i]>0))||dayData.find(x=>!x.done)||null;
+  return {s,dayData,factMinutes,factOrders,factCoef,factIncome,remainingMinutes,plannedFinalMinutes,minPeriodMinutes,targetPeriodMinutes,planShortfallMinutes,requiredFinalOrders,remainingOrdersNeeded,needOrdersByIndex,unallocatedOrders,plannedCoef,plannedIncome,missingOrdersNow,nextDay};
 }
 
 function render(){
@@ -314,36 +286,37 @@ function render(){
   const currentStatus=statusFor(m.factCoef,s,m.factMinutes>0);
   setText("factCoef",m.factCoef.toFixed(2));
   $("factCoef").className=`stat-value ${currentStatus.className}`;
-  setText("coefStatus",currentStatus.text+` · цель ${m.safeTarget.toFixed(2)}`);
+  setText("coefStatus",currentStatus.text+` · минимум ${s.target.toFixed(2)}`);
   setText("factSummary",`${m.factOrders} / ${hm(m.factMinutes)}`);
+  setText("planHoursSummary",hm(m.plannedFinalMinutes));
+  setText("planHoursHint",`минимум за период: ${hm(m.minPeriodMinutes)}${m.planShortfallMinutes>0?` · не хватает ${hm(m.planShortfallMinutes)}`:" · минимум выполнен"}`);
+  $("planHoursSummary").className=`stat-value ${m.planShortfallMinutes>0?"status-danger":"status-good"}`;
+  setText("missingOrders",m.remainingOrdersNeeded);
   setText("incomeNow",money(m.factIncome));
   setText("incomeNowHint",m.factCoef>=s.target?"выплата проходит по текущему кэфу":"выплата под риском");
-  setText("safeExtraHours",hm(m.safeExtraMinutes));
-  setText("safeExtraHoursHint",`до кэфа ${m.safeTarget.toFixed(2)} · максимум до ${s.target.toFixed(2)}: ${hm(m.maxExtraMinutes)}`);
-  setText("safeExtraIncome",money(m.safeExtraMinutes/60*s.rate));
-  setText("forecastCoef",m.forecastCoef.toFixed(2));
-  $("forecastCoef").className=`stat-value ${statusFor(m.forecastCoef,s,m.forecastMinutes>0).className}`;
-  setText("forecastCoefHint",`${m.forecastOrders} заказов / ${hm(m.forecastMinutes)} часов`);
-  setText("forecastIncome",money(m.forecastIncome));
-  setText("monthIncomeHint",`ориентир за месяц: ${money(m.forecastIncome*2)}`);
-  setText("missingOrders",m.remainingOrdersNeeded);
+  setText("forecastIncome",money(m.plannedIncome));
+  setText("forecastIncomeHint",`${m.requiredFinalOrders} заказов · итоговый кэф ${m.plannedCoef.toFixed(2)}`);
 
-  if(!m.factMinutes){
+  if(m.planShortfallMinutes>0){
+    setText("mainAction","Добавьте часы в план");
+    setText("mainActionHint",`До минимальных ${hm(m.minPeriodMinutes)} не хватает ${hm(m.planShortfallMinutes)}.`);
+    setText("mainActionValue",`+${hm(m.planShortfallMinutes)}`);
+  }else if(!m.factMinutes){
     setText("mainAction","Внесите слоты и заказы первого дня");
-    setText("mainActionHint","Часы посчитаются автоматически из диапазонов времени.");
-    setText("mainActionValue","00:00");
+    setText("mainActionHint",`По плану за период нужно ${m.requiredFinalOrders} заказов.`);
+    setText("mainActionValue",`${m.requiredFinalOrders} зак.`);
   }else if(m.factCoef<s.target){
     setText("mainAction","Сначала подтяните кэф");
-    setText("mainActionHint",`Для безопасной зоны сейчас не хватает ${m.missingOrdersNow} заказов.`);
+    setText("mainActionHint",`Для минимального кэфа сейчас не хватает ${m.missingOrdersNow} заказов.`);
     setText("mainActionValue",`${m.missingOrdersNow} зак.`);
-  }else if(m.safeExtraMinutes>0){
-    setText("mainAction","Можно безопасно добавить часы");
-    setText("mainActionHint",`Это даст еще примерно ${money(m.safeExtraMinutes/60*s.rate)}.`);
-    setText("mainActionValue",hm(m.safeExtraMinutes));
+  }else if(m.remainingOrdersNeeded>0){
+    setText("mainAction","Следуйте плану заказов");
+    setText("mainActionHint",`До конца периода осталось сделать ${m.remainingOrdersNeeded} заказов.`);
+    setText("mainActionValue",`${m.remainingOrdersNeeded} зак.`);
   }else{
-    setText("mainAction","Кэф на границе цели");
-    setText("mainActionHint","Дополнительные часы пока лучше не добавлять.");
-    setText("mainActionValue",m.factCoef.toFixed(2));
+    setText("mainAction","План выполнен");
+    setText("mainActionHint","Минимум часов и заказов закрыт.");
+    setText("mainActionValue","Готово");
   }
 
   if(m.nextDay){
@@ -352,7 +325,7 @@ function render(){
   }else{
     $("todayPlan").innerHTML='<div><strong>Период завершен</strong><div class="hint">Проверьте итоговый кэф и доход.</div></div>';
   }
-  setText("settingsHint",`По текущему плану нужно еще ${m.remainingOrdersNeeded} заказов. Прогнозный кэф ${m.forecastCoef.toFixed(2)}. ${m.safePlanExtraMinutes>0?`После выполнения плана можно добавить до ${hm(m.safePlanExtraMinutes)} часов.`:""}`);
+  setText("settingsHint",`План: ${hm(m.plannedFinalMinutes)} часов. Минимум: ${hm(m.minPeriodMinutes)}. Нужно всего ${m.requiredFinalOrders} заказов, осталось ${m.remainingOrdersNeeded}.`);
 
   $("rows").innerHTML="";
   m.dayData.forEach((x)=>{
@@ -370,7 +343,7 @@ function render(){
       <td data-label="Факт часов"><strong>${hm(x.factMinutes)}</strong><span class="day-meta">${money(dailyIncome)}</span></td>
       <td data-label="Заказы"><input class="orders" type="number" inputmode="numeric" min="0" value="${x.orders}" onchange="updateOrders(${x.i},this.value)"></td>
       <td data-label="Нужно заказов"><strong>${x.done?0:m.needOrdersByIndex[x.i]}</strong></td>
-      <td data-label="Кэф и статус"><span class="day-status ${dailyStatus.className}">${x.coef.toFixed(2)} · ${dailyStatus.text}</span><span class="day-meta">безопасно +${hm(x.extraMinutes)}</span></td>
+      <td data-label="Кэф и статус"><span class="day-status ${dailyStatus.className}">${x.coef.toFixed(2)} · ${dailyStatus.text}</span></td>
       <td data-label="Готово"><input type="checkbox" ${x.done?"checked":""} onchange="updateDone(${x.i},this.checked)"></td>`;
     $("rows").appendChild(tr);
   });
@@ -379,8 +352,7 @@ function render(){
 function applyBasePlan(){
   const s=readSettings(); saveSettings(s);
   const rows=loadRows();
-  const workDays=Math.max(1,Math.min(7,Math.round(Number(s.workDaysPerWeek)||5)));
-  rows.forEach((row,i)=>{if(!row.done) row.ph=(i%7)<workDays?r2(s.planHoursPerWorkday):r2(s.weekendPlanHours);});
+  rows.forEach((row,i)=>{if(!row.done) row.ph=(i%7)<5?10:0;});
   saveRows(rows); render();
 }
 function updatePlan(i,part,value){
@@ -406,7 +378,7 @@ function importPayload(raw){
 let plannerBound=false;
 function bindPlanner(){
   if(plannerBound) return; plannerBound=true;
-  ["rate","target","coefReserve","workDaysPerWeek","planHoursPerWorkday","ordersPerDay","weekendPlanHours","hideDone"].forEach(id=>{
+  ["rate","target","minPeriodHours","hideDone"].forEach(id=>{
     $(id).addEventListener("change",render);
   });
   $("applyPlan").onclick=applyBasePlan;
