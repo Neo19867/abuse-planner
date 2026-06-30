@@ -77,7 +77,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
       <div class="stat primary"><div class="stat-label">Общий кэф</div><div id="factCoef" class="stat-value">0.00</div><div id="coefStatus" class="hint"></div></div>
       <div class="stat primary"><div class="stat-label">Уже сделано</div><div id="factSummary" class="stat-value">0 / 00:00</div><div class="hint">заказы / часы</div></div>
       <div class="stat"><div class="stat-label">Доход сейчас</div><div id="incomeNow" class="stat-value">0 ₽</div><div id="incomeNowHint" class="hint"></div></div>
-      <div class="stat"><div class="stat-label">Можно добавить часов</div><div id="safeExtraHours" class="stat-value">00:00</div><div class="hint">до безопасного кэфа</div></div>
+      <div class="stat"><div class="stat-label">Можно добавить безопасно</div><div id="safeExtraHours" class="stat-value">00:00</div><div id="safeExtraHoursHint" class="hint"></div></div>
       <div class="stat"><div class="stat-label">Дополнительный доход</div><div id="safeExtraIncome" class="stat-value">0 ₽</div><div class="hint">если добавить часы</div></div>
       <div class="stat"><div class="stat-label">Прогноз кэфа</div><div id="forecastCoef" class="stat-value">0.00</div><div id="forecastCoefHint" class="hint"></div></div>
       <div class="stat"><div class="stat-label">Доход по плану</div><div id="forecastIncome" class="stat-value">0 ₽</div><div id="monthIncomeHint" class="hint"></div></div>
@@ -126,7 +126,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.0.0";
+const APP_VERSION = "v2.0.1";
 const K_ROWS = "courierPlan_rows_v14";
 const K_SETTINGS = "courierPlan_settings_v14";
 const K_AUTH = "courierPlan_auth_v1";
@@ -178,7 +178,6 @@ function parseSlots(raw){
     if(end<start) end+=24*60;
     const duration=end-start;
     if(duration<=0) return {minutes:0,valid:false,error:`Пустой слот «${chunk}»`};
-    if(duration>12*60) return {minutes:0,valid:false,error:`Слот больше 12 часов: «${chunk}»`};
     ranges.push({start,end,duration});
   }
   const sorted=[...ranges].sort((a,b)=>a.start-b.start);
@@ -296,14 +295,16 @@ function calculateModel(rows,s){
   const needOrdersByIndex=Array(14).fill(0);
   orderDays.forEach((x,k)=>{needOrdersByIndex[x.i]=orderAlloc[k]||0;});
   const unallocatedOrders=Math.max(0,remainingOrdersNeeded-orderAlloc.reduce((a,b)=>a+b,0));
-  const maxFactMinutesByOrders=safeTarget>0?Math.floor(factOrders/safeTarget*60):0;
-  const safeExtraMinutes=Math.max(0,maxFactMinutesByOrders-factMinutes);
+  const safeFactMinutesByOrders=safeTarget>0?Math.floor(factOrders/safeTarget*60):0;
+  const maxFactMinutesByOrders=s.target>0?Math.floor(factOrders/s.target*60):0;
+  const safeExtraMinutes=Math.max(0,safeFactMinutesByOrders-factMinutes);
+  const maxExtraMinutes=Math.max(0,maxFactMinutesByOrders-factMinutes);
   const maxForecastMinutesByOrders=safeTarget>0?Math.floor(forecastOrders/safeTarget*60):0;
   const safePlanExtraMinutes=Math.max(0,maxForecastMinutesByOrders-forecastMinutes);
   const missingOrdersNow=Math.max(0,Math.ceil(factMinutes/60*safeTarget)-factOrders);
   const missingOrdersForecast=Math.max(0,requiredFinalOrders-forecastOrders);
   const nextDay=dayData.find(x=>!x.done)||null;
-  return {s,safeTarget,dayData,factMinutes,factOrders,factCoef,factIncome,remainingMinutes,forecastMinutes,forecastOrders,forecastCoef,forecastIncome,requiredFinalOrders,remainingOrdersNeeded,needOrdersByIndex,unallocatedOrders,safeExtraMinutes,safePlanExtraMinutes,missingOrdersNow,missingOrdersForecast,nextDay};
+  return {s,safeTarget,dayData,factMinutes,factOrders,factCoef,factIncome,remainingMinutes,forecastMinutes,forecastOrders,forecastCoef,forecastIncome,requiredFinalOrders,remainingOrdersNeeded,needOrdersByIndex,unallocatedOrders,safeExtraMinutes,maxExtraMinutes,safePlanExtraMinutes,missingOrdersNow,missingOrdersForecast,nextDay};
 }
 
 function render(){
@@ -318,6 +319,7 @@ function render(){
   setText("incomeNow",money(m.factIncome));
   setText("incomeNowHint",m.factCoef>=s.target?"выплата проходит по текущему кэфу":"выплата под риском");
   setText("safeExtraHours",hm(m.safeExtraMinutes));
+  setText("safeExtraHoursHint",`до кэфа ${m.safeTarget.toFixed(2)} · максимум до ${s.target.toFixed(2)}: ${hm(m.maxExtraMinutes)}`);
   setText("safeExtraIncome",money(m.safeExtraMinutes/60*s.rate));
   setText("forecastCoef",m.forecastCoef.toFixed(2));
   $("forecastCoef").className=`stat-value ${statusFor(m.forecastCoef,s,m.forecastMinutes>0).className}`;
@@ -368,7 +370,7 @@ function render(){
       <td data-label="Факт часов"><strong>${hm(x.factMinutes)}</strong><span class="day-meta">${money(dailyIncome)}</span></td>
       <td data-label="Заказы"><input class="orders" type="number" inputmode="numeric" min="0" value="${x.orders}" onchange="updateOrders(${x.i},this.value)"></td>
       <td data-label="Нужно заказов"><strong>${x.done?0:m.needOrdersByIndex[x.i]}</strong></td>
-      <td data-label="Кэф и статус"><span class="day-status ${dailyStatus.className}">${x.coef.toFixed(2)} · ${dailyStatus.text}</span><span class="day-meta">можно +${hm(x.extraMinutes)}</span></td>
+      <td data-label="Кэф и статус"><span class="day-status ${dailyStatus.className}">${x.coef.toFixed(2)} · ${dailyStatus.text}</span><span class="day-meta">безопасно +${hm(x.extraMinutes)}</span></td>
       <td data-label="Готово"><input type="checkbox" ${x.done?"checked":""} onchange="updateDone(${x.i},this.checked)"></td>`;
     $("rows").appendChild(tr);
   });
