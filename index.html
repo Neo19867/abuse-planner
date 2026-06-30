@@ -1,732 +1,432 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="ru">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>План смен и кэфа</title>
 <style>
-:root{--bg:#020402;--card:rgba(3,20,9,.72);--line:#0f6b2c;--text:#9dff9d;--muted:#52b36a;--accent:#2cff6b}
+:root{--bg:#010503;--card:rgba(3,20,10,.84);--line:#126b32;--line2:#1f9b4c;--text:#a5ffb6;--muted:#63b879;--accent:#32ff75;--warn:#ffd166;--danger:#ff6b6b;--good:#5dff91}
 *{box-sizing:border-box}
-body{margin:0;font-family:Consolas,"Courier New",monospace;background:#000;color:var(--text);position:relative}
-#matrix-bg{position:fixed;inset:0;z-index:0;opacity:.36;pointer-events:none}
-.wrap{max-width:1400px;margin:0 auto;padding:16px;position:relative;z-index:1}
+html,body{margin:0;min-height:100%;overflow-x:hidden}
+body{font-family:Consolas,"Courier New",monospace;background:radial-gradient(circle at 50% -20%,#0b2e18 0,#010503 45%,#000 100%);color:var(--text)}
+#matrix-bg{position:fixed;inset:0;z-index:0;opacity:.25;pointer-events:none}
 .hidden{display:none!important}
-.auth-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px;position:relative;z-index:2}
-.auth-card{width:min(520px,100%);background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 0 24px rgba(22,255,95,.12)}
-.auth-title{margin:0 0 8px;font-size:24px}
-.auth-status{margin-top:10px;color:var(--muted);min-height:20px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;backdrop-filter:blur(2px);box-shadow:0 0 24px rgba(22,255,95,.12)}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.wrap{position:relative;z-index:1;max-width:1320px;margin:auto;padding:14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:15px;padding:14px;margin-bottom:12px;box-shadow:0 0 24px rgba(30,255,100,.09);backdrop-filter:blur(4px)}
+h1,h2{margin:0 0 10px;text-shadow:0 0 10px rgba(50,255,117,.28)}
+h1{font-size:clamp(24px,5vw,38px)}h2{font-size:19px}
+.version,.muted,.hint{color:var(--muted);font-size:12px}.hint{line-height:1.45}
+.settings-grid,.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:9px}
 label{display:block;color:var(--muted);font-size:12px;margin-bottom:5px}
-input,select,button{width:100%;padding:9px;border-radius:10px;border:1px solid #1d8c41;background:rgba(2,18,8,.75);color:var(--text)}
-html,body{overflow-x:hidden}
-input[type=checkbox]{width:auto!important;height:16px;padding:0;accent-color:#2cff6b;cursor:pointer;filter:drop-shadow(0 0 4px rgba(44,255,107,.45))}
-label>input[type=checkbox]{margin-right:6px;vertical-align:middle}
-input:focus,select:focus{outline:none;box-shadow:0 0 0 2px rgba(44,255,107,.2)}
-button{cursor:pointer;background:linear-gradient(180deg,#1a7f3f,#0e5f2d);border:0;font-weight:700}
-.actions{display:flex;gap:8px;flex-wrap:wrap}.actions button{width:auto}
-.table-wrap{overflow:auto;border:1px solid var(--line);border-radius:12px}
-table{width:100%;border-collapse:collapse;min-width:0}
-th,td{border-bottom:1px solid #0f6b2c;padding:6px;text-align:center}
-th{color:#8dffab;background:rgba(0,20,8,.7)}
-.time{display:inline-flex;gap:4px;align-items:center}.time input{width:52px;text-align:center;padding:7px}
-.done td{background:rgba(27,156,67,.25)!important}
-.stat{border:1px solid var(--line);border-radius:12px;padding:10px;background:rgba(0,18,7,.6)}
-.label2{font-size:12px;color:var(--muted)}.value{font-size:24px;font-weight:700;text-shadow:0 0 8px rgba(100,255,140,.35)}
-.tips,.shift{border:1px solid var(--line);border-radius:12px;padding:10px;background:rgba(0,16,6,.62);line-height:1.55}
-.quick{border:1px solid var(--line);border-radius:12px;padding:10px;background:rgba(0,20,8,.62);line-height:1.5}
-.quick .title{font-weight:700;margin-bottom:4px}
-.quick .item{margin:2px 0}
-.chip{display:inline-block;border:1px solid #1d8c41;border-radius:999px;padding:2px 8px;font-size:12px;color:var(--muted);margin:2px 4px 0 0}
-.schemes{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px}
-.scheme{padding:8px;border:1px solid #1d8c41;border-radius:10px;background:rgba(0,26,10,.7);cursor:pointer}
-.scheme.active{border-color:#50ff8a;background:rgba(7,58,24,.85);box-shadow:0 0 12px rgba(44,255,107,.25)}
-h1,h2{letter-spacing:.4px;text-shadow:0 0 10px rgba(44,255,107,.35)}
-@media (max-width:768px){
-  .wrap{padding:10px}
-  .value{font-size:28px}
-  input,select,button{font-size:16px}
-  .table-wrap{overflow:visible}
-  table,tbody,tr,td{display:block;width:100%}
-  thead{display:none}
-  tr{border:1px solid var(--line);border-radius:12px;padding:8px;margin:8px 0;background:rgba(0,16,6,.55)}
-  td{border-bottom:1px dashed rgba(31,166,75,.35);text-align:right;padding:7px 4px;display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
-  td:last-child{border-bottom:none}
-  td::before{content:attr(data-label);text-align:left;color:var(--muted);font-size:12px}
-  .time{justify-self:end}
+input,select,button{font:inherit;color:var(--text);background:rgba(0,17,7,.88);border:1px solid var(--line2);border-radius:10px;padding:10px;min-height:42px}
+input,select{width:100%}input:focus,select:focus{outline:none;box-shadow:0 0 0 2px rgba(50,255,117,.2)}
+button{cursor:pointer;font-weight:700;background:linear-gradient(180deg,#16783b,#0c5428)}button.secondary{background:rgba(3,35,15,.9)}button.danger{border-color:#8c3333;color:#ffaaaa;background:#421818}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}.actions button{width:auto}
+.stats{grid-template-columns:repeat(auto-fit,minmax(185px,1fr))}
+.stat{border:1px solid var(--line);border-radius:12px;padding:11px;background:rgba(0,16,7,.7)}
+.stat.primary{border-color:var(--line2);background:linear-gradient(145deg,rgba(5,52,24,.9),rgba(0,16,7,.7))}
+.stat-label{font-size:12px;color:var(--muted)}.stat-value{font-size:27px;font-weight:800;margin:3px 0;text-shadow:0 0 9px rgba(80,255,130,.32)}
+.status-good{color:var(--good)}.status-warn{color:var(--warn)}.status-danger{color:var(--danger)}
+.focus{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid var(--line2);border-radius:13px;padding:12px;background:linear-gradient(110deg,rgba(6,61,27,.85),rgba(0,15,7,.75))}
+.focus strong{font-size:18px}.focus-value{font-size:23px;font-weight:800;text-align:right}
+.table-wrap{border:1px solid var(--line);border-radius:13px;overflow:hidden}
+table{width:100%;border-collapse:collapse}th,td{padding:8px 6px;text-align:center;border-bottom:1px solid var(--line)}th{background:rgba(0,24,10,.95);color:#94ffad;font-size:12px}
+tr.done td{background:rgba(31,132,61,.22)}.time{display:inline-flex;align-items:center;gap:4px}.time input{width:53px;text-align:center;padding:7px;min-height:36px}
+.slots{min-width:245px}.orders{max-width:96px;text-align:center}.day-status{font-size:12px;white-space:nowrap}.day-meta{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+input[type=checkbox]{width:19px;height:19px;min-height:0;padding:0;accent-color:var(--accent);filter:drop-shadow(0 0 4px rgba(50,255,117,.45))}
+.slot-error{display:block;color:var(--danger);font-size:11px;margin-top:4px;text-align:left}.empty{text-align:center;color:var(--muted);padding:18px}
+.auth-screen{position:relative;z-index:2;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}.auth-card{width:min(500px,100%)}
+details summary{cursor:pointer;font-weight:700;list-style:none}details summary::-webkit-details-marker{display:none}details summary::after{content:" +";color:var(--muted)}details[open] summary::after{content:" -"}
+@media(max-width:760px){
+  .wrap{padding:9px}.card{padding:11px;border-radius:13px}.actions{display:grid;grid-template-columns:1fr 1fr}.actions button{width:100%}
+  .focus{grid-template-columns:1fr}.focus-value{text-align:left}.stat-value{font-size:25px}
+  .table-wrap{border:0;overflow:visible}table,tbody,tr,td{display:block;width:100%}thead{display:none}
+  tr{border:1px solid var(--line);border-radius:13px;padding:8px;margin:9px 0;background:rgba(0,18,8,.82)}
+  td{display:grid;grid-template-columns:minmax(105px,42%) 1fr;gap:8px;align-items:center;text-align:right;padding:8px 4px;border-bottom:1px dashed rgba(39,151,72,.4)}
+  td:last-child{border:0}td::before{content:attr(data-label);text-align:left;color:var(--muted);font-size:12px}.slots{min-width:0}.orders{max-width:none}.time{justify-self:end}
 }
 </style>
 </head>
-<body><canvas id="matrix-bg"></canvas>
+<body>
+<canvas id="matrix-bg"></canvas>
 <div id="authGate" class="auth-screen">
-  <div class="auth-card">
-    <h2 class="auth-title">Вход через Telegram</h2>
-    <div style="color:var(--muted)">Доступ к планировщику только для авторизованных пользователей.</div>
+  <div class="card auth-card">
+    <h2>Вход через Telegram</h2>
+    <div class="muted">Данные этого устройства откроются после входа.</div>
     <div id="tgLoginWidget" style="margin-top:12px"></div>
-    <div class="auth-status" id="authStatus"></div>
+    <div id="authStatus" class="muted" style="margin-top:8px"></div>
   </div>
 </div>
-<div class="wrap hidden" id="appWrap">
-<div class="card"><h1>План смен и кэфа</h1><div id="appVersion" style="color:var(--muted);font-size:12px">Версия: -</div></div>
-<div class="card"><h2>Настройки</h2><div class="grid">
-<div><label>Целевой коэффициент</label><input id="target" type="number" step="0.01" inputmode="decimal" value="1.6"></div>
-<div><label>Запас к кэфу</label><input id="coefReserve" type="number" step="0.01" inputmode="decimal" value="0.01"></div>
-<div><label>Доход за час (₽)</label><input id="rate" type="number" inputmode="numeric" value="400"></div>
-<div><label>Реально работаете (дн/нед)</label><select id="workDaysPerWeek"><option value="1">1 день</option><option value="2">2 дня</option><option value="3">3 дня</option><option value="4">4 дня</option><option value="5" selected>5 дней</option><option value="6">6 дней</option><option value="7">7 дней</option></select></div>
-<div><label>План реальных часов в рабочий день</label><input id="realHoursPerWorkday" type="number" inputmode="decimal" value="10"></div>
-<div><label>Виртуал в рабочий день (ч)</label><input id="virtualHoursPerWorkday" type="number" inputmode="decimal" value="2"></div>
-<div><label>Ожидаемые заказы в рабочий день</label><input id="ordersPerDay" type="number" inputmode="numeric" value="25"></div>
-<div><label>Макс вирт в выходной день (ч)</label><input id="weekendVirtualMax" type="number" inputmode="decimal" value="12"></div>
-</div><div class="actions" style="margin-top:8px">
-<button id="applyGoal">Применить цель</button><button id="optimizePlan">Пересчитать заказы</button><button id="exportData">Сохранить данные</button><button id="importData">Загрузить данные</button><button id="reset">Сброс</button>
-</div></div>
-<div class="card"><h2>Быстрый старт (для новичка)</h2>
-  <div class="quick">
-    <div class="item"><b>1.</b> В таблице вносите только факт: <b>часы</b> и <b>заказы</b>.</div>
-    <div class="item"><b>2.</b> Смотрите карточку <b>План на сегодня</b> и делайте именно ее.</div>
-    <div class="item"><b>3.</b> К концу 2 недель держите кэф не ниже цели: <span id="quickCoefTarget">1.60</span>.</div>
-    <div class="item" id="quickFactText">Уже сделано: 0 заказов и 00:00 часов.</div>
-    <div class="item" id="quickTodayText">Сегодня: 0 заказов и 00:00 часов.</div>
-    <div style="margin-top:6px">
-      <span class="chip">Кэф = заказы / часы</span>
-      <span class="chip">Платят за часы, если кэф не ниже цели</span>
+
+<main id="appWrap" class="wrap hidden">
+  <section class="card">
+    <h1>План смен и кэфа</h1>
+    <div id="appVersion" class="version">Версия: -</div>
+  </section>
+
+  <section class="card">
+    <div class="focus">
+      <div><strong id="mainAction">Внесите первые часы и заказы</strong><div id="mainActionHint" class="hint"></div></div>
+      <div id="mainActionValue" class="focus-value">00:00</div>
     </div>
-  </div>
-</div>
-<div class="card"><h2>Показатели</h2><div class="stats">
-<div class="stat"><div class="label2">Коэффициент</div><div class="value" id="factCoef">0</div><div id="coefStatus" class="label2"></div></div>
-<div class="stat"><div class="label2">План доход</div><div class="value" id="planIncome">0 ₽</div><div class="label2" id="planIncomeHint"></div></div>
-<div class="stat"><div class="label2">Прогноз кэф (конец периода)</div><div class="value" id="projectedCoef">0</div><div class="label2" id="projectedCoefHint"></div></div>
-<div class="stat"><div class="label2">Прогноз кэф на сегодня</div><div class="value" id="projectedCoefToday">0</div><div class="label2" id="projectedCoefTodayHint"></div></div>
-<div class="stat"><div class="label2">План на сегодня</div><div class="value" id="todayPlanCompact">0 / 00:00</div><div class="label2" id="todayPlanCompactHint"></div></div>
-</div></div>
-<div class="card"><h2>Подсказки</h2><div id="tips" class="tips"></div></div>
-<div class="card"><h2>План на сегодня</h2><div id="todayShiftPlan" class="shift"></div></div>
-<div class="card"><h2>План и факт по дням</h2><label><input id="hideDone" type="checkbox"> Скрыть выполненные</label><div class="table-wrap"><table><thead><tr><th>День</th><th>План часы</th><th>Факт слоты</th><th>Факт часы</th><th>Факт заказы</th><th>Нужно часов</th><th>Нужно заказов</th><th>Вып.</th></tr></thead><tbody id="rows"></tbody></table></div></div>
-</div>
+  </section>
+
+  <section class="card">
+    <h2>Главное за 2 недели</h2>
+    <div class="stats">
+      <div class="stat primary"><div class="stat-label">Общий кэф</div><div id="factCoef" class="stat-value">0.00</div><div id="coefStatus" class="hint"></div></div>
+      <div class="stat primary"><div class="stat-label">Уже сделано</div><div id="factSummary" class="stat-value">0 / 00:00</div><div class="hint">заказы / часы</div></div>
+      <div class="stat"><div class="stat-label">Доход сейчас</div><div id="incomeNow" class="stat-value">0 ₽</div><div id="incomeNowHint" class="hint"></div></div>
+      <div class="stat"><div class="stat-label">Можно добавить часов</div><div id="safeExtraHours" class="stat-value">00:00</div><div class="hint">до безопасного кэфа</div></div>
+      <div class="stat"><div class="stat-label">Дополнительный доход</div><div id="safeExtraIncome" class="stat-value">0 ₽</div><div class="hint">если добавить часы</div></div>
+      <div class="stat"><div class="stat-label">Прогноз кэфа</div><div id="forecastCoef" class="stat-value">0.00</div><div id="forecastCoefHint" class="hint"></div></div>
+      <div class="stat"><div class="stat-label">Доход по плану</div><div id="forecastIncome" class="stat-value">0 ₽</div><div id="monthIncomeHint" class="hint"></div></div>
+      <div class="stat"><div class="stat-label">Нужно заказов до конца</div><div id="missingOrders" class="stat-value">0</div><div class="hint">по текущему плану часов</div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Ближайший день</h2>
+    <div id="todayPlan" class="focus"><div><strong>План пока не рассчитан</strong></div></div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Настройки расчета</summary>
+      <div class="settings-grid" style="margin-top:12px">
+        <div><label>Ставка за час, ₽</label><input id="rate" type="number" inputmode="numeric" min="0" value="400"></div>
+        <div><label>Минимальный кэф для выплаты</label><input id="target" type="number" inputmode="decimal" min="0" step="0.01" value="1.60"></div>
+        <div><label>Запас к кэфу</label><input id="coefReserve" type="number" inputmode="decimal" min="0" step="0.01" value="0.01"></div>
+        <div><label>Рабочих дней в неделю</label><select id="workDaysPerWeek"><option>1</option><option>2</option><option>3</option><option>4</option><option selected>5</option><option>6</option><option>7</option></select></div>
+        <div><label>План часов в рабочий день</label><input id="planHoursPerWorkday" type="number" inputmode="decimal" min="0" max="24" step="0.25" value="12"></div>
+        <div><label>Ожидаемые заказы в рабочий день</label><input id="ordersPerDay" type="number" inputmode="numeric" min="0" value="25"></div>
+        <div><label>План часов в выходной</label><input id="weekendPlanHours" type="number" inputmode="decimal" min="0" max="24" step="0.25" value="0"></div>
+      </div>
+      <div class="actions">
+        <button id="applyPlan">Заполнить план часов</button>
+        <button id="recalcOrders">Пересчитать заказы</button>
+        <button id="exportData" class="secondary">Сохранить данные</button>
+        <button id="importData" class="secondary">Загрузить данные</button>
+        <button id="reset" class="danger">Сбросить</button>
+      </div>
+      <div id="settingsHint" class="hint" style="margin-top:8px"></div>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>Дни периода</h2>
+    <label style="display:flex;align-items:center;gap:7px"><input id="hideDone" type="checkbox"> Скрыть завершенные дни</label>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>День</th><th>План часов</th><th>Слоты факта</th><th>Факт</th><th>Заказы</th><th>Нужно заказов</th><th>Кэф и статус</th><th>Готово</th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
 <script>
-const K1 = "courierPlan_rows_v14";
-const K2 = "courierPlan_settings_v14";
-const K3 = "courierPlan_auth_v1";
-const APP_VERSION = "v1.0.6";
+const APP_VERSION = "v2.0.0";
+const K_ROWS = "courierPlan_rows_v14";
+const K_SETTINGS = "courierPlan_settings_v14";
+const K_AUTH = "courierPlan_auth_v1";
+const TG_BOT_USERNAME = "MR_ROBOT86_bot";
+const WEEKDAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
 const $ = (id) => document.getElementById(id);
-const TG_BOT_USERNAME = "MR_ROBOT86_bot"; // Замените на username вашего Telegram-бота
-let isPlannerBound = false;
+const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const money = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(Number(n) || 0)) + " ₽";
+const hm = (minutes) => {
+  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  return String(Math.floor(m / 60)).padStart(2,"0") + ":" + String(m % 60).padStart(2,"0");
+};
+const hoursToMinutes = (h) => Math.max(0, Math.round((Number(h) || 0) * 60));
+const minutesToHours = (m) => r2((Number(m) || 0) / 60);
+const escapeHtml = (s) => String(s || "").replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const setText = (id,value) => { const el=$(id); if(el) el.textContent=value; };
 
-const D = {
-  target: 1.6,
-  coefReserve: 0.01,
-  rate: 400,
-  workDaysPerWeek: "5",
-  realHoursPerWorkday: 10,
-  virtualHoursPerWorkday: 2,
-  weekendVirtualMax: 12,
-  ordersPerDay: 25,
-  weekdayRealDefault: 10,
-  weekdayVirtualDefault: 2,
-  weekendVirtualDefault: 12,
-  onboardingDone: false,
-  hideDone: false,
+const DEFAULTS = {
+  rate:400,
+  target:1.6,
+  coefReserve:0.01,
+  workDaysPerWeek:"5",
+  planHoursPerWorkday:12,
+  ordersPerDay:25,
+  weekendPlanHours:0,
+  onboardingDone:true,
+  hideDone:false,
 };
 
-const r2 = (n) => Math.round((+n || 0) * 100) / 100;
-const money = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(+n || 0)) + " ₽";
-const setText = (id, value) => { const el = $(id); if (el) el.textContent = value; };
-const split = (h) => { const m = Math.max(0, Math.round((+h || 0) * 60)); return { h: Math.floor(m / 60), m: m % 60 }; };
-const comp = (h, m) => r2((Math.max(0, Math.round(+h || 0)) * 60 + Math.round(Math.max(0, Math.min(59, +m || 0)) / 5) * 5) / 60);
-const hhmm = (m) => { m = Math.max(0, Math.round(+m || 0)); return String(Math.floor(m / 60)).padStart(2, "0") + ":" + String(m % 60).padStart(2, "0"); };
-const hm = (h) => hhmm(Math.round((+h || 0) * 60));
-const distributeInts = (total, n) => {
-  if (n <= 0) return [];
-  const t = Math.max(0, Math.round(+total || 0));
-  const b = Math.floor(t / n);
-  let r = t % n;
-  return Array.from({ length: n }, () => b + (r-- > 0 ? 1 : 0));
-};
-const distributeIntsByWeights = (total, weights) => {
-  const t = Math.max(0, Math.round(+total || 0));
-  const w = Array.isArray(weights) ? weights.map((x) => Math.max(0, +x || 0)) : [];
-  const sum = w.reduce((p, x) => p + x, 0);
-  if (!w.length) return [];
-  if (sum <= 0) return distributeInts(t, w.length);
-  const raw = w.map((x) => (t * x) / sum);
-  const base = raw.map((x) => Math.floor(x));
-  let left = t - base.reduce((p, x) => p + x, 0);
-  const order = raw.map((x, i) => ({ i, frac: x - Math.floor(x) })).sort((a, b) => b.frac - a.frac);
-  for (let k = 0; k < order.length && left > 0; k++, left--) base[order[k].i]++;
-  return base;
-};
-const distributeHours = (hours, n) => distributeInts(Math.round((+hours || 0) * 60), n).map((m) => r2(m / 60));
-const fillByCapSequence = (totalMinutes, caps) => {
-  let left = Math.max(0, Math.round(+totalMinutes || 0));
-  const c = (Array.isArray(caps) ? caps : []).map((x) => Math.max(0, Math.round(+x || 0)));
-  const out = c.map(() => 0);
-  for (let i = 0; i < c.length && left > 0; i++) {
-    const give = Math.min(c[i], left);
-    out[i] = give;
-    left -= give;
+function parseClock(raw){
+  const match=String(raw||"").trim().match(/^(\d{1,2}):(\d{2})$/);
+  if(!match) return null;
+  const h=Number(match[1]),m=Number(match[2]);
+  if(h<0||h>23||m<0||m>59) return null;
+  return h*60+m;
+}
+
+function parseSlots(raw){
+  const text=String(raw||"").trim();
+  if(!text) return {minutes:0,valid:true,error:""};
+  const chunks=text.split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
+  const ranges=[];
+  for(const chunk of chunks){
+    const match=chunk.match(/^(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})$/);
+    if(!match) return {minutes:0,valid:false,error:`Не распознан слот «${chunk}»`};
+    const start=parseClock(match[1]),endRaw=parseClock(match[2]);
+    if(start===null||endRaw===null) return {minutes:0,valid:false,error:`Неверное время в «${chunk}»`};
+    let end=endRaw;
+    if(end<start) end+=24*60;
+    const duration=end-start;
+    if(duration<=0) return {minutes:0,valid:false,error:`Пустой слот «${chunk}»`};
+    if(duration>12*60) return {minutes:0,valid:false,error:`Слот больше 12 часов: «${chunk}»`};
+    ranges.push({start,end,duration});
   }
-  return out;
-};
-const fillWeekendLumpyByWeek = (totalMinutes, dayIdx, caps) => {
-  let left = Math.max(0, Math.round(+totalMinutes || 0));
-  const idx = Array.isArray(dayIdx) ? dayIdx.slice() : [];
-  const c = (Array.isArray(caps) ? caps : []).map((x) => Math.max(0, Math.round(+x || 0)));
-  const out = c.map(() => 0);
-  if (!idx.length || idx.length !== c.length || left <= 0) return out;
-
-  const posByDay = {};
-  idx.forEach((d, p) => { posByDay[d] = p; });
-  const weeks = Array.from(new Set(idx.map((d) => Math.floor(d / 7)))).sort((a, b) => a - b);
-
-  // Глобальный приоритет: сначала все 2-е выходные (до 12ч), потом 1-е, потом остальные.
-  const secondDays = [];
-  const firstDays = [];
-  const otherDays = [];
-  weeks.forEach((w) => {
-    const days = idx.filter((d) => Math.floor(d / 7) === w).sort((a, b) => a - b);
-    if (!days.length) return;
-    if (days.length > 1) secondDays.push(days[1]); else secondDays.push(days[0]);
-    if (days.length > 1) firstDays.push(days[0]);
-    for (let k = 2; k < days.length; k++) otherDays.push(days[k]);
-  });
-
-  const ordered = [...secondDays, ...firstDays, ...otherDays];
-  ordered.forEach((d) => {
-    if (left <= 0) return;
-    const p = posByDay[d];
-    const free = Math.max(0, c[p] - out[p]);
-    if (free <= 0) return;
-    const cap = secondDays.includes(d) ? Math.min(free, 12 * 60) : free;
-    const give = Math.min(cap, left);
-    out[p] += give;
-    left -= give;
-  });
-
-  return out;
-};
-const enforceSecondWeekend12ByWeek = (hoursByIdx, workDaysPerWeek) => {
-  const arr = Array.isArray(hoursByIdx) ? hoursByIdx : [];
-  const wd = Math.max(1, Math.min(7, Math.round(+workDaysPerWeek || 5)));
-  if (wd >= 6) return arr;
-  for (let w = 0; w < 2; w++) {
-    const weekStart = w * 7;
-    const first = weekStart + wd;
-    const second = first + 1;
-    if (second >= weekStart + 7 || second >= arr.length) continue;
-    const pairM = Math.max(0, Math.round(((+arr[first] || 0) + (+arr[second] || 0)) * 60));
-    const secondM = Math.min(12 * 60, pairM);
-    const firstM = Math.max(0, pairM - secondM);
-    arr[first] = r2(firstM / 60);
-    arr[second] = r2(secondM / 60);
+  const sorted=[...ranges].sort((a,b)=>a.start-b.start);
+  for(let i=1;i<sorted.length;i++){
+    if(sorted[i].start<sorted[i-1].end) return {minutes:0,valid:false,error:"Слоты пересекаются"};
   }
-  return arr;
-};
-const distributeIntsWithCaps = (total, caps, weights) => {
-  const t0 = Math.max(0, Math.round(+total || 0));
-  const c = (Array.isArray(caps) ? caps : []).map((x) => Math.max(0, Math.round(+x || 0)));
-  if (!c.length) return [];
-  const maxSum = c.reduce((p, x) => p + x, 0);
-  const t = Math.min(t0, maxSum);
-  const w0 = Array.isArray(weights) && weights.length === c.length ? weights : c.map(() => 1);
-  const w = w0.map((x, i) => c[i] > 0 ? Math.max(0, +x || 0) : 0);
-  const sw = w.reduce((p, x) => p + x, 0);
-  const ww = sw > 0 ? w : c.map((x) => x > 0 ? 1 : 0);
-  const sww = ww.reduce((p, x) => p + x, 0) || 1;
+  return {minutes:ranges.reduce((sum,x)=>sum+x.duration,0),valid:true,error:""};
+}
 
-  const raw = ww.map((x) => (t * x) / sww);
-  const out = raw.map((x, i) => Math.min(c[i], Math.floor(x)));
-  let left = t - out.reduce((p, x) => p + x, 0);
+function emptyRows(){
+  return Array.from({length:14},()=>({ph:0,fs:"",fh:0,fo:0,done:false}));
+}
 
-  while (left > 0) {
-    let progressed = false;
-    const order = raw
-      .map((x, i) => ({ i, frac: x - Math.floor(x), capLeft: c[i] - out[i] }))
-      .filter((z) => z.capLeft > 0)
-      .sort((a, b) => b.frac - a.frac);
-    if (!order.length) break;
-    for (let k = 0; k < order.length && left > 0; k++) {
-      const i = order[k].i;
-      if (out[i] < c[i]) {
-        out[i]++;
-        left--;
-        progressed = true;
-      }
-    }
-    if (!progressed) break;
-  }
-  return out;
-};
-const parseHmToMin = (s) => {
-  const m = String(s || "").trim().match(/^(\d{1,2}):(\d{2})$/);
-  if (!m) return null;
-  const hh = Math.max(0, Math.min(23, +m[1]));
-  const mm = Math.max(0, Math.min(59, +m[2]));
-  return hh * 60 + mm;
-};
-const hoursFromSlots = (raw) => {
-  const txt = String(raw || "").trim();
-  if (!txt) return 0;
-  let total = 0;
-  txt.split(",").forEach((part) => {
-    const m = part.trim().match(/^(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})$/);
-    if (!m) return;
-    const a = parseHmToMin(m[1]);
-    const b = parseHmToMin(m[2]);
-    if (a === null || b === null) return;
-    let d = b - a;
-    if (d < 0) d += 24 * 60;
-    total += d;
-  });
-  return r2(total / 60);
-};
-const empty = () => Array.from({ length: 14 }, () => ({ ph: 0, fh: 0, fs: "", fo: 0, done: false }));
-const planOrd = (h, c) => h > 0 ? Math.ceil((+h) * c) : 0;
-
-function loadRows() {
-  try {
-    const a = JSON.parse(localStorage.getItem(K1) || "null");
-    if (!Array.isArray(a) || a.length !== 14) return empty();
-    return a.map((x) => ({
-      ph: r2((+x.ph || 0) || ((+x.pr || 0) + (+x.pv || 0))),
-      fh: r2((+x.fh || 0) || ((+x.fr || 0) + (+x.fv || 0)),
-      ),
-      fs: String(x.fs || ""),
-      fo: Math.max(0, Math.round(+x.fo || 0)), done: !!x.done
+function loadRows(){
+  try{
+    const raw=JSON.parse(localStorage.getItem(K_ROWS)||"null");
+    if(!Array.isArray(raw)||raw.length!==14) return emptyRows();
+    return raw.map(x=>({
+      ph:r2((Number(x.ph)||0)||((Number(x.pr)||0)+(Number(x.pv)||0))),
+      fs:String(x.fs||""),
+      fh:r2((Number(x.fh)||0)||((Number(x.fr)||0)+(Number(x.fv)||0))),
+      fo:Math.max(0,Math.round(Number(x.fo)||0)),
+      done:Boolean(x.done),
     }));
-  } catch { return empty(); }
+  }catch{return emptyRows();}
 }
-const saveRows = (a) => localStorage.setItem(K1, JSON.stringify(a));
+function saveRows(rows){localStorage.setItem(K_ROWS,JSON.stringify(rows));}
 
-function loadSet() { try { return { ...D, ...JSON.parse(localStorage.getItem(K2) || "{}") }; } catch { return { ...D }; } }
-const saveSet = (s) => localStorage.setItem(K2, JSON.stringify(s));
-const exportPayload = () => JSON.stringify({
-  app: "shift-coef-planner",
-  version: APP_VERSION,
-  exportedAt: new Date().toISOString(),
-  settings: loadSet(),
-  rows: loadRows(),
-});
-const importPayload = (raw) => {
-  let p = null;
-  try { p = JSON.parse(String(raw || "")); } catch { throw new Error("Неверный JSON."); }
-  if (!p || !Array.isArray(p.rows) || p.rows.length !== 14) throw new Error("Неверный формат данных.");
-  const rows = p.rows.map((x) => ({
-    ph: r2(+x.ph || 0),
-    fh: r2(+x.fh || 0),
-    fs: String(x.fs || ""),
-    fo: Math.max(0, Math.round(+x.fo || 0)),
-    done: !!x.done,
-  }));
-  const settings = { ...D, ...(p.settings || {}) };
-  saveRows(rows);
-  saveSet(settings);
-};
-
-function readSet() {
-  const e = loadSet();
+function normalizeSettings(raw={}){
+  const oldPlan=(Number(raw.realHoursPerWorkday)||0)+(Number(raw.virtualHoursPerWorkday)||0);
   return {
-    target: +$("target").value || 0,
-    coefReserve: Math.max(0, +$("coefReserve").value || 0),
-    rate: +$("rate").value || 0,
-    workDaysPerWeek: String(Math.max(1, Math.min(7, Math.round(+$("workDaysPerWeek").value || 5)))),
-    realHoursPerWorkday: Math.max(0, r2(+$("realHoursPerWorkday").value || 0)),
-    virtualHoursPerWorkday: Math.max(0, r2(+$("virtualHoursPerWorkday").value || 0)),
-    weekendVirtualMax: Math.max(0, Math.min(12, r2(+$("weekendVirtualMax").value || 0))),
-    ordersPerDay: Math.max(0, Math.round(+$("ordersPerDay").value || 0)),
-    weekdayRealDefault: +e.weekdayRealDefault || D.weekdayRealDefault,
-    weekdayVirtualDefault: +e.weekdayVirtualDefault || D.weekdayVirtualDefault,
-    weekendVirtualDefault: +e.weekendVirtualDefault || D.weekendVirtualDefault,
-    onboardingDone: !!e.onboardingDone,
-    hideDone: $("hideDone").checked,
+    ...DEFAULTS,
+    ...raw,
+    workDaysPerWeek:String(Math.max(1,Math.min(7,Math.round(Number(raw.workDaysPerWeek)||5)))),
+    planHoursPerWorkday:r2(Number(raw.planHoursPerWorkday)||(oldPlan||12)),
+    weekendPlanHours:r2(Number(raw.weekendPlanHours)||0),
   };
 }
-
-function writeSet(s) {
-  $("target").value = s.target;
-  $("coefReserve").value = s.coefReserve ?? 0.01;
-  $("rate").value = s.rate;
-  $("workDaysPerWeek").value = s.workDaysPerWeek || "5";
-  $("realHoursPerWorkday").value = s.realHoursPerWorkday ?? 10;
-  $("virtualHoursPerWorkday").value = s.virtualHoursPerWorkday ?? 2;
-  $("weekendVirtualMax").value = s.weekendVirtualMax ?? 12;
-  $("ordersPerDay").value = s.ordersPerDay ?? 25;
-  $("hideDone").checked = !!s.hideDone;
+function loadSettings(){
+  try{return normalizeSettings(JSON.parse(localStorage.getItem(K_SETTINGS)||"{}"));}catch{return {...DEFAULTS};}
 }
-
-function buildTemplate() {
-  applyGoal();
-}
-
-function optimizeRemainingPlan() {
-  render();
-}
-
-function applyGoal() {
-  const s = readSet();
-  saveSet(s);
-  const a = loadRows();
-  const workDaysPerWeek = Math.max(1, Math.min(7, Math.round(+s.workDaysPerWeek || 5)));
-  const workDaysPeriod = workDaysPerWeek * 2;
-  const offDaysPeriod = Math.max(0, 14 - workDaysPeriod);
-  const safeCoef = r2((s.target || 0) + (s.coefReserve || 0));
-  const totalOrdersTarget = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPeriod)); // ожидаемый объем заказов
-  const maxTotalHours = 14 * 12;
-  const totalHoursTarget = safeCoef > 0 ? Math.min(maxTotalHours, totalOrdersTarget / safeCoef) : 0;
-  const realDaily = Math.min(12, Math.max(0, r2(s.realHoursPerWorkday || 0)));
-  const workVirtDaily = Math.max(0, Math.min(12 - realDaily, r2(s.virtualHoursPerWorkday || 0)));
-  const weekendVirtMax = Math.max(0, Math.min(12, r2(s.weekendVirtualMax || 12)));
-  const baseWorkHours = r2((realDaily + workVirtDaily) * workDaysPeriod);
-  let weekendVirtNeed = Math.max(0, r2(totalHoursTarget - baseWorkHours));
-
-  const offIdx = [];
-  const workIdx = [];
-  a.forEach((_, i) => ((i % 7) < workDaysPerWeek ? workIdx : offIdx).push(i));
-
-  const phByIdx = Array(14).fill(0);
-  workIdx.forEach((idx) => { phByIdx[idx] = r2(realDaily + workVirtDaily); });
-
-  const offCap = offDaysPeriod * weekendVirtMax;
-  const offGive = Math.min(weekendVirtNeed, offCap);
-  const offSeqM = fillWeekendLumpyByWeek(
-    Math.round(offGive * 60),
-    offIdx,
-    offIdx.map(() => Math.round(weekendVirtMax * 60)),
-  );
-  offSeqM.forEach((m, k) => { phByIdx[offIdx[k]] = r2(m / 60); });
-  enforceSecondWeekend12ByWeek(phByIdx, workDaysPerWeek);
-
-  a.forEach((x, i) => {
-    x.ph = r2(phByIdx[i] || 0);
+function saveSettings(s){localStorage.setItem(K_SETTINGS,JSON.stringify(s));}
+function readSettings(){
+  return normalizeSettings({
+    ...loadSettings(),
+    rate:Number($("rate").value)||0,
+    target:Number($("target").value)||0,
+    coefReserve:Math.max(0,Number($("coefReserve").value)||0),
+    workDaysPerWeek:$("workDaysPerWeek").value,
+    planHoursPerWorkday:Math.max(0,Number($("planHoursPerWorkday").value)||0),
+    ordersPerDay:Math.max(0,Math.round(Number($("ordersPerDay").value)||0)),
+    weekendPlanHours:Math.max(0,Number($("weekendPlanHours").value)||0),
+    hideDone:$("hideDone").checked,
   });
-  saveRows(a);
-  render();
+}
+function writeSettings(s){
+  $("rate").value=s.rate; $("target").value=s.target; $("coefReserve").value=s.coefReserve;
+  $("workDaysPerWeek").value=s.workDaysPerWeek; $("planHoursPerWorkday").value=s.planHoursPerWorkday;
+  $("ordersPerDay").value=s.ordersPerDay; $("weekendPlanHours").value=s.weekendPlanHours;
+  $("hideDone").checked=Boolean(s.hideDone);
 }
 
-function runFirstStartSetup() {
-  const s = loadSet();
-  if (s.onboardingDone) return s;
-  const wdRaw = prompt("Сколько дней в неделю сможете реально работать? (1..7)", "5");
-  const rhRaw = prompt("Сколько реальных часов в рабочий день планируете? (например 10)", "10");
-  const vhRaw = prompt("Сколько виртуальных часов в рабочий день обычно делаете? (например 2)", "2");
-  const opdRaw = prompt("Сколько в среднем заказов в рабочий день планируете делать?", "25");
-  const workDays = Math.max(1, Math.min(7, Math.round(+wdRaw || 5)));
-  const realH = Math.max(0, r2(+rhRaw || 10));
-  const virtH = Math.max(0, r2(+vhRaw || 2));
-  const opd = Math.max(0, Math.round(+opdRaw || 0));
-  s.workDaysPerWeek = String(workDays);
-  s.realHoursPerWorkday = realH;
-  s.virtualHoursPerWorkday = virtH;
-  s.weekendVirtualMax = 12;
-  s.ordersPerDay = opd;
-  s.weekdayRealDefault = realH;
-  s.weekdayVirtualDefault = virtH;
-  s.weekendVirtualDefault = 12;
-  s.onboardingDone = true;
-  saveSet(s);
-  writeSet(s);
-  buildTemplate();
-  return s;
+function distributeIntegers(total,weights){
+  const t=Math.max(0,Math.round(total||0));
+  if(!weights.length) return [];
+  const w=weights.map(x=>Math.max(0,Number(x)||0));
+  const sum=w.reduce((a,b)=>a+b,0);
+  if(sum<=0){
+    const base=Math.floor(t/w.length); let rest=t%w.length;
+    return w.map(()=>base+(rest-->0?1:0));
+  }
+  const raw=w.map(x=>t*x/sum),out=raw.map(Math.floor);
+  let rest=t-out.reduce((a,b)=>a+b,0);
+  raw.map((x,i)=>({i,f:x-Math.floor(x)})).sort((a,b)=>b.f-a.f).forEach(x=>{if(rest>0){out[x.i]++;rest--;}});
+  return out;
 }
 
-function render() {
-  const s = readSet();
-  saveSet(s);
-  const safeCoef = r2((s.target || 0) + (s.coefReserve || 0));
-  const a = loadRows();
-  const e = a.map((x) => {
-    const ph = r2(x.ph || 0);
-    const fh = x.fs ? hoursFromSlots(x.fs) : r2(x.fh || 0);
-    const po = ph > 0 ? planOrd(ph, safeCoef) : 0;
-    return { ...x, ph, fh, po };
+function dayName(i){return `Неделя ${Math.floor(i/7)+1} · ${WEEKDAYS[i%7]}`;}
+function statusFor(coef,s,hasHours){
+  const safe=r2(s.target+s.coefReserve);
+  if(!hasHours) return {text:"Нет данных",className:"muted"};
+  if(coef>=safe) return {text:"Запас есть",className:"status-good"};
+  if(coef>=s.target) return {text:"На границе",className:"status-warn"};
+  return {text:"Риск выплаты",className:"status-danger"};
+}
+
+function calculateModel(rows,s){
+  const safeTarget=r2(s.target+s.coefReserve);
+  const workDays=Math.max(1,Math.min(7,Math.round(Number(s.workDaysPerWeek)||5)));
+  const dayData=rows.map((row,i)=>{
+    const parsed=parseSlots(row.fs);
+    const factMinutes=row.fs ? parsed.minutes : hoursToMinutes(row.fh);
+    const planMinutes=hoursToMinutes(row.ph);
+    const remainingMinutes=row.done?0:Math.max(0,planMinutes-factMinutes);
+    const orders=Math.max(0,Math.round(row.fo||0));
+    const coef=factMinutes>0?orders/(factMinutes/60):0;
+    const extraMinutes=factMinutes>0&&coef>=safeTarget?Math.max(0,Math.floor(orders/safeTarget*60-factMinutes)):0;
+    return {...row,i,parsed,factMinutes,planMinutes,remainingMinutes,orders,coef,extraMinutes,isWorkDay:(i%7)<workDays};
   });
+  const factMinutes=dayData.reduce((sum,x)=>sum+x.factMinutes,0);
+  const factOrders=dayData.reduce((sum,x)=>sum+x.orders,0);
+  const factCoef=factMinutes>0?factOrders/(factMinutes/60):0;
+  const factIncome=factMinutes/60*s.rate;
+  const remainingMinutes=dayData.reduce((sum,x)=>sum+x.remainingMinutes,0);
+  const forecastMinutes=factMinutes+remainingMinutes;
+  const expectedOrdersPerHour=s.planHoursPerWorkday>0?s.ordersPerDay/s.planHoursPerWorkday:0;
+  const forecastAddedOrders=dayData.reduce((sum,x)=>sum+(x.isWorkDay?x.remainingMinutes/60*expectedOrdersPerHour:0),0);
+  const forecastOrders=Math.max(factOrders,Math.round(factOrders+forecastAddedOrders));
+  const forecastCoef=forecastMinutes>0?forecastOrders/(forecastMinutes/60):0;
+  const forecastIncome=forecastMinutes/60*s.rate;
+  const requiredFinalOrders=forecastMinutes>0?Math.ceil(forecastMinutes/60*safeTarget):0;
+  const remainingOrdersNeeded=Math.max(0,requiredFinalOrders-factOrders);
+  const orderDays=dayData.filter(x=>!x.done&&x.isWorkDay);
+  const orderAlloc=distributeIntegers(remainingOrdersNeeded,orderDays.map(x=>x.remainingMinutes));
+  const needOrdersByIndex=Array(14).fill(0);
+  orderDays.forEach((x,k)=>{needOrdersByIndex[x.i]=orderAlloc[k]||0;});
+  const unallocatedOrders=Math.max(0,remainingOrdersNeeded-orderAlloc.reduce((a,b)=>a+b,0));
+  const maxFactMinutesByOrders=safeTarget>0?Math.floor(factOrders/safeTarget*60):0;
+  const safeExtraMinutes=Math.max(0,maxFactMinutesByOrders-factMinutes);
+  const maxForecastMinutesByOrders=safeTarget>0?Math.floor(forecastOrders/safeTarget*60):0;
+  const safePlanExtraMinutes=Math.max(0,maxForecastMinutesByOrders-forecastMinutes);
+  const missingOrdersNow=Math.max(0,Math.ceil(factMinutes/60*safeTarget)-factOrders);
+  const missingOrdersForecast=Math.max(0,requiredFinalOrders-forecastOrders);
+  const nextDay=dayData.find(x=>!x.done)||null;
+  return {s,safeTarget,dayData,factMinutes,factOrders,factCoef,factIncome,remainingMinutes,forecastMinutes,forecastOrders,forecastCoef,forecastIncome,requiredFinalOrders,remainingOrdersNeeded,needOrdersByIndex,unallocatedOrders,safeExtraMinutes,safePlanExtraMinutes,missingOrdersNow,missingOrdersForecast,nextDay};
+}
 
-  const P = {
-    po: e.reduce((p, x) => p + x.po, 0),
-    fo: e.reduce((p, x) => p + x.fo, 0),
-    ph: e.reduce((p, x) => p + x.ph, 0),
-    fh: e.reduce((p, x) => p + x.fh, 0),
-  };
-  const workDaysPerWeek = Math.max(1, Math.min(7, Math.round(+s.workDaysPerWeek || 5)));
+function render(){
+  const s=readSettings(); saveSettings(s);
+  const rows=loadRows();
+  const m=calculateModel(rows,s);
+  const currentStatus=statusFor(m.factCoef,s,m.factMinutes>0);
+  setText("factCoef",m.factCoef.toFixed(2));
+  $("factCoef").className=`stat-value ${currentStatus.className}`;
+  setText("coefStatus",currentStatus.text+` · цель ${m.safeTarget.toFixed(2)}`);
+  setText("factSummary",`${m.factOrders} / ${hm(m.factMinutes)}`);
+  setText("incomeNow",money(m.factIncome));
+  setText("incomeNowHint",m.factCoef>=s.target?"выплата проходит по текущему кэфу":"выплата под риском");
+  setText("safeExtraHours",hm(m.safeExtraMinutes));
+  setText("safeExtraIncome",money(m.safeExtraMinutes/60*s.rate));
+  setText("forecastCoef",m.forecastCoef.toFixed(2));
+  $("forecastCoef").className=`stat-value ${statusFor(m.forecastCoef,s,m.forecastMinutes>0).className}`;
+  setText("forecastCoefHint",`${m.forecastOrders} заказов / ${hm(m.forecastMinutes)} часов`);
+  setText("forecastIncome",money(m.forecastIncome));
+  setText("monthIncomeHint",`ориентир за месяц: ${money(m.forecastIncome*2)}`);
+  setText("missingOrders",m.remainingOrdersNeeded);
 
-  const activeAnyIdx = [];
-  const activeOrderIdx = [];
-  e.forEach((x, i) => {
-    if (x.done) return;
-    activeAnyIdx.push(i);
-    if ((i % 7) < workDaysPerWeek) activeOrderIdx.push(i);
-  });
+  if(!m.factMinutes){
+    setText("mainAction","Внесите слоты и заказы первого дня");
+    setText("mainActionHint","Часы посчитаются автоматически из диапазонов времени.");
+    setText("mainActionValue","00:00");
+  }else if(m.factCoef<s.target){
+    setText("mainAction","Сначала подтяните кэф");
+    setText("mainActionHint",`Для безопасной зоны сейчас не хватает ${m.missingOrdersNow} заказов.`);
+    setText("mainActionValue",`${m.missingOrdersNow} зак.`);
+  }else if(m.safeExtraMinutes>0){
+    setText("mainAction","Можно безопасно добавить часы");
+    setText("mainActionHint",`Это даст еще примерно ${money(m.safeExtraMinutes/60*s.rate)}.`);
+    setText("mainActionValue",hm(m.safeExtraMinutes));
+  }else{
+    setText("mainAction","Кэф на границе цели");
+    setText("mainActionHint","Дополнительные часы пока лучше не добавлять.");
+    setText("mainActionValue",m.factCoef.toFixed(2));
+  }
 
-  const planHByIdx = Array(e.length).fill(0);
-  const planOByIdx = Array(e.length).fill(0);
-  activeAnyIdx.forEach((idx) => {
-    planHByIdx[idx] = Math.max(0, r2(e[idx].ph - e[idx].fh));
-  });
-  const visibleNeedHours = r2(planHByIdx.reduce((p, x) => p + x, 0));
-  const requiredTotalOrdersBase = Math.max(0, Math.round((+s.ordersPerDay || 0) * workDaysPerWeek * 2));
-  const requiredTotalOrders = Math.max(0, Math.ceil((P.fh + visibleNeedHours) * safeCoef));
-  const leftO = Math.max(0, requiredTotalOrders - P.fo);
+  if(m.nextDay){
+    const need=m.needOrdersByIndex[m.nextDay.i]||0;
+    $("todayPlan").innerHTML=`<div><strong>${dayName(m.nextDay.i)}</strong><div class="hint">Осталось по плану ${hm(m.nextDay.remainingMinutes)}. Нужно сделать ${need} заказов.</div></div><div class="focus-value">${need} / ${hm(m.nextDay.remainingMinutes)}</div>`;
+  }else{
+    $("todayPlan").innerHTML='<div><strong>Период завершен</strong><div class="hint">Проверьте итоговый кэф и доход.</div></div>';
+  }
+  setText("settingsHint",`По текущему плану нужно еще ${m.remainingOrdersNeeded} заказов. Прогнозный кэф ${m.forecastCoef.toFixed(2)}. ${m.safePlanExtraMinutes>0?`После выполнения плана можно добавить до ${hm(m.safePlanExtraMinutes)} часов.`:""}`);
 
-  const orderWeights = activeOrderIdx.map((idx) => Math.max(0, planHByIdx[idx]));
-  distributeIntsByWeights(leftO, orderWeights).forEach((v, i) => { planOByIdx[activeOrderIdx[i]] = v; });
-
-  const n = activeAnyIdx.length;
-  const nextDayIdx = n ? activeAnyIdx[0] : -1;
-  const opd = nextDayIdx >= 0 ? planOByIdx[nextDayIdx] : 0;
-  const hpd = nextDayIdx >= 0 ? planHByIdx[nextDayIdx] : 0;
-  const visibleNeedOrders = Math.max(0, Math.round(planOByIdx.reduce((p, x) => p + x, 0)));
-  const coef = P.fh > 0 ? P.fo / P.fh : 0;
-  const needCoefRemain = visibleNeedHours > 0 ? leftO / visibleNeedHours : 0;
-  const projectedHoursFinal = r2(P.fh + visibleNeedHours);
-  const projectedOrdersFinal = P.fo + visibleNeedOrders;
-  const projectedCoefFinal = projectedHoursFinal > 0 ? projectedOrdersFinal / projectedHoursFinal : 0;
-  const projectedOrdersToday = P.fo + opd;
-  const projectedHoursToday = r2(P.fh + hpd);
-  const projectedCoefToday = projectedHoursToday > 0 ? projectedOrdersToday / projectedHoursToday : 0;
-
-  $("rows").innerHTML = "";
-  e.forEach((x, i) => {
-    if (s.hideDone && x.done) return;
-    const tr = document.createElement("tr");
-    if (x.done) tr.className = "done";
-    const ph = split(x.ph);
-    tr.innerHTML = `<td data-label="День">День ${i + 1}</td>
-      <td data-label="План часы"><span class=time><input type=number min=0 max=24 value=${ph.h} onchange="updPH(${i},'h',this.value)">:<input type=number min=0 max=59 value=${ph.m} onchange="updPH(${i},'m',this.value)"></span></td>
-      <td data-label="Факт слоты"><input class=small-input type=text placeholder="07:30-19:30, 19:30-20:35" value="${(x.fs || "").replace(/"/g, "&quot;")}" onchange="updSlots(${i},this.value)"></td>
-      <td data-label="Факт часы">${hm(e[i].fh)}</td>
-      <td data-label="Факт заказы"><input class=small-input type=number min=0 value=${x.fo} onchange="upd(${i},'fo',this.value)"></td>
-      <td data-label="Нужно часов">${x.done ? "00:00" : hm(planHByIdx[i])}</td>
-      <td data-label="Нужно заказов">${x.done ? 0 : planOByIdx[i]}</td>
-      <td data-label="Выполнен"><input type=checkbox ${x.done ? "checked" : ""} onchange="upd(${i},'done',this.checked)"></td>`;
+  $("rows").innerHTML="";
+  m.dayData.forEach((x)=>{
+    if(s.hideDone&&x.done) return;
+    const tr=document.createElement("tr");
+    if(x.done) tr.className="done";
+    const planH=Math.floor(x.planMinutes/60),planM=x.planMinutes%60;
+    const dailyStatus=statusFor(x.coef,s,x.factMinutes>0);
+    const dailyIncome=x.factMinutes/60*s.rate;
+    const slotError=x.parsed.valid?"":`<span class="slot-error">${escapeHtml(x.parsed.error)}</span>`;
+    tr.innerHTML=`
+      <td data-label="День"><strong>${dayName(x.i)}</strong></td>
+      <td data-label="План часов"><span class="time"><input type="number" inputmode="numeric" min="0" max="24" value="${planH}" onchange="updatePlan(${x.i},'h',this.value)">:<input type="number" inputmode="numeric" min="0" max="59" value="${planM}" onchange="updatePlan(${x.i},'m',this.value)"></span></td>
+      <td data-label="Слоты факта"><input class="slots" type="text" placeholder="07:30-19:30, 19:30-20:35" value="${escapeHtml(x.fs)}" onchange="updateSlots(${x.i},this.value)">${slotError}</td>
+      <td data-label="Факт часов"><strong>${hm(x.factMinutes)}</strong><span class="day-meta">${money(dailyIncome)}</span></td>
+      <td data-label="Заказы"><input class="orders" type="number" inputmode="numeric" min="0" value="${x.orders}" onchange="updateOrders(${x.i},this.value)"></td>
+      <td data-label="Нужно заказов"><strong>${x.done?0:m.needOrdersByIndex[x.i]}</strong></td>
+      <td data-label="Кэф и статус"><span class="day-status ${dailyStatus.className}">${x.coef.toFixed(2)} · ${dailyStatus.text}</span><span class="day-meta">можно +${hm(x.extraMinutes)}</span></td>
+      <td data-label="Готово"><input type="checkbox" ${x.done?"checked":""} onchange="updateDone(${x.i},this.checked)"></td>`;
     $("rows").appendChild(tr);
   });
-
-  setText("factCoef", coef.toFixed(2));
-  setText("planIncome", money((P.fh + visibleNeedHours) * s.rate));
-  setText("planIncomeHint", `на сегодня ~ ${money(hpd * s.rate)} (по плану часов)`);
-  setText("projectedCoef", projectedCoefFinal.toFixed(2));
-  setText("projectedCoefHint", `по введенному плану: ${projectedOrdersFinal} заказов, ${hm(projectedHoursFinal)} часов`);
-  setText("projectedCoefToday", projectedCoefToday.toFixed(2));
-  setText("projectedCoefTodayHint", `по плану дня: ${projectedOrdersToday} заказов, ${hm(projectedHoursToday)} часов`);
-  setText("todayPlanCompact", `${opd} / ${hm(hpd)}`);
-  setText("todayPlanCompactHint", `сегодня: ${opd} заказов за ${hm(hpd)}`);
-  setText("quickCoefTarget", safeCoef.toFixed(2));
-  setText("quickFactText", `Уже сделано: ${P.fo} заказов и ${hm(P.fh)} часов.`);
-  setText("quickTodayText", `Сегодня: ${opd} заказов и ${hm(hpd)} часов.`);
-  setText("coefStatus", coef >= safeCoef ? "Коэффициент с запасом" : coef >= s.target ? "Коэффициент в минимуме" : "Ниже минимума");
-
-  const coefBlock = coef < s.target
-    ? `<div class=main>Приоритет: подтянуть коэффициент до минимума ${s.target.toFixed(2)}.</div>`
-    : coef < safeCoef
-      ? `<div class=main>Минимум выполнен, но лучше держать запас до ${safeCoef.toFixed(2)}.</div>`
-      : `<div class=main>Коэффициент с запасом (${safeCoef.toFixed(2)}), фокус на заработке по часам.</div>`;
-  $("tips").innerHTML = `${coefBlock}
-    <div><b>Сегодня:</b> ${opd} заказов и ${hm(hpd)} часов.</div>
-    <div><b>Остаток:</b> часы ${hm(visibleNeedHours)}, нужно кэф ${needCoefRemain.toFixed(2)}.</div>`;
-
-  const nextDayNum = nextDayIdx >= 0 ? nextDayIdx + 1 : null;
-  $("todayShiftPlan").innerHTML = `<div class=title>План на сегодня${nextDayNum ? ` (день ${nextDayNum})` : ""}</div>
-    <div class=step><b>Цель:</b> ${opd} заказов и ${hm(hpd)} часов.</div>
-    <div class=step>Вводите факт слотами: <code>07:30-19:30, 19:30-20:35</code>.</div>`;
 }
 
-function upd(i, f, v) {
-  const a = loadRows();
-  if (!a[i]) return;
-  if (f === "done") a[i][f] = !!v;
-  else if (f === "fo") a[i][f] = Math.max(0, Math.round(+v || 0));
-  saveRows(a);
-  render();
+function applyBasePlan(){
+  const s=readSettings(); saveSettings(s);
+  const rows=loadRows();
+  const workDays=Math.max(1,Math.min(7,Math.round(Number(s.workDaysPerWeek)||5)));
+  rows.forEach((row,i)=>{if(!row.done) row.ph=(i%7)<workDays?r2(s.planHoursPerWorkday):r2(s.weekendPlanHours);});
+  saveRows(rows); render();
 }
-function updPH(i, p, v) {
-  const a = loadRows();
-  if (!a[i]) return;
-  const c = split(a[i].ph);
-  if (p === "h") c.h = Math.max(0, Math.min(24, Math.round(+v || 0)));
-  if (p === "m") c.m = Math.max(0, Math.min(59, Math.round(+v || 0)));
-  a[i].ph = comp(c.h, c.m);
-  saveRows(a);
-  render();
+function updatePlan(i,part,value){
+  const rows=loadRows(),current=hoursToMinutes(rows[i].ph);
+  let h=Math.floor(current/60),m=current%60;
+  if(part==="h") h=Math.max(0,Math.min(24,Math.round(Number(value)||0)));
+  if(part==="m") m=Math.max(0,Math.min(59,Math.round(Number(value)||0)));
+  rows[i].ph=minutesToHours(h*60+m); saveRows(rows); render();
 }
-function updSlots(i, v) {
-  const a = loadRows();
-  if (!a[i]) return;
-  a[i].fs = String(v || "").trim();
-  a[i].fh = hoursFromSlots(a[i].fs);
-  saveRows(a);
-  render();
-}
-window.upd = upd;
-window.updPH = updPH;
-window.updSlots = updSlots;
+function updateSlots(i,value){const rows=loadRows();rows[i].fs=String(value||"").trim();const p=parseSlots(rows[i].fs);rows[i].fh=p.valid?minutesToHours(p.minutes):0;saveRows(rows);render();}
+function updateOrders(i,value){const rows=loadRows();rows[i].fo=Math.max(0,Math.round(Number(value)||0));saveRows(rows);render();}
+function updateDone(i,value){const rows=loadRows();rows[i].done=Boolean(value);saveRows(rows);render();}
+window.updatePlan=updatePlan;window.updateSlots=updateSlots;window.updateOrders=updateOrders;window.updateDone=updateDone;
 
-function setupMatrixBackground() {
-  const canvas = $("matrix-bg");
-  if (!canvas) return;
-  const ctx = canvas.getContext("2d");
-  const chars = "01アァカサタナハマヤャラワガザダバパABCDEFGHIJKLMNOPQRSTUVWXYZ#$%&*";
-  let w = 0, h = 0, font = 16, cols = 0, drops = [];
-
-  const resize = () => {
-    w = window.innerWidth;
-    h = window.innerHeight;
-    canvas.width = w;
-    canvas.height = h;
-    cols = Math.max(1, Math.floor(w / font));
-    drops = Array(cols).fill(1).map(() => Math.floor(Math.random() * h / font));
-  };
-
-  const draw = () => {
-    ctx.fillStyle = "rgba(0, 0, 0, 0.08)";
-    ctx.fillRect(0, 0, w, h);
-    ctx.fillStyle = "#51ff83";
-    ctx.font = font + "px Consolas, monospace";
-    for (let i = 0; i < drops.length; i++) {
-      const text = chars.charAt(Math.floor(Math.random() * chars.length));
-      const x = i * font;
-      const y = drops[i] * font;
-      ctx.fillText(text, x, y);
-      if (y > h && Math.random() > 0.975) drops[i] = 0;
-      drops[i]++;
-    }
-  };
-
-  resize();
-  window.addEventListener("resize", resize);
-  setInterval(draw, 42);
+function exportPayload(){return JSON.stringify({app:"shift-coef-planner",version:APP_VERSION,exportedAt:new Date().toISOString(),settings:loadSettings(),rows:loadRows()});}
+function importPayload(raw){
+  let data;try{data=JSON.parse(String(raw||""));}catch{throw new Error("Неверный JSON");}
+  if(!data||!Array.isArray(data.rows)||data.rows.length!==14) throw new Error("Неверный формат данных");
+  saveRows(data.rows.map(x=>({ph:r2(Number(x.ph)||0),fs:String(x.fs||""),fh:r2(Number(x.fh)||0),fo:Math.max(0,Math.round(Number(x.fo)||0)),done:Boolean(x.done)})));
+  saveSettings(normalizeSettings(data.settings||{}));
 }
 
-function setAuthStatus(msg, isError = false) {
-  const el = $("authStatus");
-  if (!el) return;
-  el.textContent = msg || "";
-  el.style.color = isError ? "#ff7d7d" : "var(--muted)";
-}
-
-function loadAuthSession() {
-  try {
-    return JSON.parse(localStorage.getItem(K3) || "null");
-  } catch { return null; }
-}
-
-function saveAuthSession(s) {
-  localStorage.setItem(K3, JSON.stringify(s));
-}
-
-function showAuthorizedUi(session) {
-  $("authGate").classList.add("hidden");
-  $("appWrap").classList.remove("hidden");
-}
-
-window.onTelegramAuth = (user) => {
-  if (!user || !user.id) {
-    setAuthStatus("Не удалось получить данные Telegram.", true);
-    return;
-  }
-  const session = {
-    authenticated: true,
-    user: {
-      id: user.id,
-      username: user.username || "",
-      first_name: user.first_name || "",
-    },
-  };
-  saveAuthSession(session);
-  setAuthStatus("Вход выполнен.");
-  showAuthorizedUi(session);
-  initPlanner();
-};
-
-function mountTelegramWidget() {
-  const box = $("tgLoginWidget");
-  if (!box) return;
-  box.innerHTML = "";
-  if (!TG_BOT_USERNAME) {
-    setAuthStatus("Укажите username Telegram-бота в TG_BOT_USERNAME.", true);
-    return;
-  }
-  const sc = document.createElement("script");
-  sc.src = "https://telegram.org/js/telegram-widget.js?22";
-  sc.async = true;
-  sc.setAttribute("data-telegram-login", TG_BOT_USERNAME);
-  sc.setAttribute("data-size", "large");
-  sc.setAttribute("data-userpic", "false");
-  sc.setAttribute("data-request-access", "write");
-  sc.setAttribute("data-onauth", "onTelegramAuth(user)");
-  box.appendChild(sc);
-}
-
-function checkSession() {
-  const s = loadAuthSession();
-  if (!s || !s.authenticated || !s.user || !s.user.id) return { authenticated: false };
-  return s;
-}
-
-function bindPlannerEvents() {
-  if (isPlannerBound) return;
-  isPlannerBound = true;
-  ["target","coefReserve","rate","workDaysPerWeek","realHoursPerWorkday","virtualHoursPerWorkday","weekendVirtualMax","ordersPerDay","hideDone"]
-    .forEach((id) => { $(id).addEventListener("input", render); $(id).addEventListener("change", render); });
-  ["weekendVirtualMax"].forEach((id) => {
-    $(id).addEventListener("change", () => applyGoal());
+let plannerBound=false;
+function bindPlanner(){
+  if(plannerBound) return; plannerBound=true;
+  ["rate","target","coefReserve","workDaysPerWeek","planHoursPerWorkday","ordersPerDay","weekendPlanHours","hideDone"].forEach(id=>{
+    $(id).addEventListener("change",render);
   });
-  $("applyGoal").onclick = applyGoal;
-  $("optimizePlan").onclick = optimizeRemainingPlan;
-  $("exportData").onclick = async () => {
-    const payload = exportPayload();
-    let copied = false;
-    try {
-      await navigator.clipboard.writeText(payload);
-      copied = true;
-    } catch {}
-    prompt(copied ? "Данные скопированы. Сохраните этот код для другого устройства:" : "Скопируйте этот код для другого устройства:", payload);
-  };
-  $("importData").onclick = () => {
-    const raw = prompt("Вставьте код данных, который сохранили на другом устройстве:");
-    if (!raw) return;
-    try {
-      importPayload(raw);
-      const s2 = loadSet();
-      writeSet(s2);
-      render();
-      alert("Данные загружены.");
-    } catch (err) {
-      alert(err?.message || "Не удалось загрузить данные.");
-    }
-  };
-  $("reset").onclick = () => {
-    localStorage.removeItem(K1);
-    localStorage.removeItem(K2);
-    const s = { ...D };
-    saveSet(s);
-    writeSet(s);
-    runFirstStartSetup();
-    render();
-  };
+  $("applyPlan").onclick=applyBasePlan;
+  $("recalcOrders").onclick=render;
+  $("exportData").onclick=async()=>{const data=exportPayload();try{await navigator.clipboard.writeText(data);}catch{}prompt("Сохраните этот код и вставьте его на другом устройстве:",data);};
+  $("importData").onclick=()=>{const raw=prompt("Вставьте код данных:");if(!raw)return;try{importPayload(raw);writeSettings(loadSettings());render();alert("Данные загружены");}catch(e){alert(e.message||"Ошибка загрузки");}};
+  $("reset").onclick=()=>{if(!confirm("Удалить все введенные данные и настройки?"))return;localStorage.removeItem(K_ROWS);localStorage.removeItem(K_SETTINGS);writeSettings(DEFAULTS);applyBasePlan();};
 }
 
-function initPlanner() {
-  let s = loadSet();
-  if (!s.onboardingDone) s = runFirstStartSetup();
-  writeSet(s);
-  if ($("appVersion")) $("appVersion").textContent = `Версия: ${APP_VERSION}`;
-  if (!localStorage.getItem(K1)) {
-    buildTemplate();
-  }
-  bindPlannerEvents();
-  render();
+function setupMatrix(){
+  const canvas=$("matrix-bg"),ctx=canvas.getContext("2d"),chars="01ABCDEFGHIJKLMNOPQRSTUVWXYZ#$%&*";let w,h,font=16,drops=[];
+  const resize=()=>{w=canvas.width=innerWidth;h=canvas.height=innerHeight;drops=Array(Math.max(1,Math.floor(w/font))).fill(0).map(()=>Math.random()*h/font);};
+  resize();addEventListener("resize",resize);setInterval(()=>{ctx.fillStyle="rgba(0,0,0,.09)";ctx.fillRect(0,0,w,h);ctx.fillStyle="#3cff7a";ctx.font=font+"px Consolas";drops.forEach((y,i)=>{ctx.fillText(chars[Math.floor(Math.random()*chars.length)],i*font,y*font);drops[i]=(y*font>h&&Math.random()>.975)?0:y+1;});},48);
 }
 
-function bootstrap() {
-  setupMatrixBackground();
-  const session = checkSession();
-  if (session && session.authenticated) {
-    showAuthorizedUi(session);
-    initPlanner();
-    return;
-  }
-  mountTelegramWidget();
+function showApp(){$("authGate").classList.add("hidden");$("appWrap").classList.remove("hidden");writeSettings(loadSettings());setText("appVersion",`Версия: ${APP_VERSION}`);if(!localStorage.getItem(K_ROWS)){saveRows(emptyRows());applyBasePlan();}bindPlanner();render();}
+window.onTelegramAuth=(user)=>{if(!user||!user.id)return;localStorage.setItem(K_AUTH,JSON.stringify({authenticated:true,user:{id:user.id,username:user.username||""}}));showApp();};
+function mountTelegram(){
+  const script=document.createElement("script");script.src="https://telegram.org/js/telegram-widget.js?22";script.async=true;script.setAttribute("data-telegram-login",TG_BOT_USERNAME);script.setAttribute("data-size","large");script.setAttribute("data-userpic","false");script.setAttribute("data-onauth","onTelegramAuth(user)");$("tgLoginWidget").appendChild(script);
 }
+function bootstrap(){setupMatrix();try{const auth=JSON.parse(localStorage.getItem(K_AUTH)||"null");if(auth?.authenticated){showApp();return;}}catch{}mountTelegram();}
 bootstrap();
 </script>
-</body></html>
+</body>
+</html>
