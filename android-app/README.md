@@ -7,5 +7,5 @@
 ## Получение APK
 
 Workflow `Build Android APK` собирает устанавливаемый debug APK при изменениях в папке
-`android-app`. Готовый файл находится в артефакте `shift-coef-planner-v2.1.4.apk` соответствующего
+`android-app`. Готовый файл находится в артефакте `shift-coef-planner-v2.1.5.apk` соответствующего
 запуска GitHub Actions.
