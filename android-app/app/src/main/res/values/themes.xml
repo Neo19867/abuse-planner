@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.ShiftPlanner" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">monospace</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:statusBarColor">@color/matrix_black</item>
+        <item name="android:navigationBarColor">@color/matrix_black</item>
+        <item name="android:windowBackground">@color/matrix_black</item>
+        <item name="android:colorAccent">@color/matrix_green</item>
+    </style>
+</resources>
