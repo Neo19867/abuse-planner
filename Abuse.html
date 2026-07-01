@@ -347,7 +347,7 @@ function render(){
     tr.innerHTML=`
       <td data-label="День"><strong>${dayName(x.i)}</strong></td>
       <td data-label="План часов"><span class="time"><input type="number" inputmode="numeric" min="0" max="24" value="${planH}" onchange="updatePlan(${x.i},'h',this.value)">:<input type="number" inputmode="numeric" min="0" max="59" value="${planM}" onchange="updatePlan(${x.i},'m',this.value)"></span></td>
-      <td data-label="Слоты факта"><input class="slots" type="text" placeholder="07:30-19:30, 19:30-20:35" value="${escapeHtml(x.fs)}" onchange="updateSlots(${x.i},this.value)">${slotError}</td>
+      <td data-label="Слоты факт"><input class="slots" type="text" placeholder="07:30-19:30, 19:30-20:35" value="${escapeHtml(x.fs)}" onchange="updateSlots(${x.i},this.value)">${slotError}</td>
       <td data-label="Факт часов"><strong>${hm(x.factMinutes)}</strong><span class="day-meta">${money(dailyIncome)}</span></td>
       <td data-label="Заказы"><input class="orders" type="number" inputmode="numeric" min="0" value="${x.orders}" onchange="updateOrders(${x.i},this.value)"></td>
       <td data-label="Нужно заказов"><strong>${x.done?0:m.needOrdersByIndex[x.i]}</strong></td>
