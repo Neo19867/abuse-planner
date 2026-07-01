@@ -66,6 +66,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
     <div class="stats">
       <div class="stat primary"><div class="stat-label">Общий кэф</div><div id="factCoef" class="stat-value">0.00</div><div id="coefStatus" class="hint"></div></div>
       <div class="stat primary"><div class="stat-label">Уже сделано</div><div id="factSummary" class="stat-value">0 / 00:00</div><div class="hint">заказы / часы</div></div>
+      <div class="stat primary"><div class="stat-label">Можно добавить сейчас</div><div id="addableHours" class="stat-value">00:00</div><div id="addableHoursHint" class="hint">без падения кэфа ниже нормы</div></div>
       <div class="stat"><div class="stat-label">План часов</div><div id="planHoursSummary" class="stat-value">00:00</div><div id="planHoursHint" class="hint"></div></div>
       <div class="stat"><div class="stat-label">Нужно заказов до конца</div><div id="missingOrders" class="stat-value">0</div><div class="hint">для минимального кэфа</div></div>
       <div class="stat"><div class="stat-label">Доход сейчас</div><div id="incomeNow" class="stat-value">0 ₽</div><div id="incomeNowHint" class="hint"></div></div>
@@ -110,7 +111,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.1.3";
+const APP_VERSION = "v2.1.4";
 const K_ROWS = "courierPlan_rows_v14";
 const K_SETTINGS = "courierPlan_settings_v14";
 const WEEKDAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
@@ -234,6 +235,11 @@ function statusFor(coef,s,hasHours){
   return {text:"Риск выплаты",className:"status-danger"};
 }
 
+function maxMinutesForOrders(orders,target){
+  if(target<=0) return 0;
+  return Math.max(0,Math.floor((Math.max(0,orders)/target)*60+1e-9));
+}
+
 function calculateModel(rows,s){
   const dayData=rows.map((row,i)=>{
     const parsed=parseSlots(row.fs);
@@ -260,11 +266,14 @@ function calculateModel(rows,s){
   const needOrdersByIndex=Array(14).fill(0);
   orderDays.forEach((x,k)=>{needOrdersByIndex[x.i]=orderAlloc[k]||0;});
   const unallocatedOrders=Math.max(0,remainingOrdersNeeded-orderAlloc.reduce((a,b)=>a+b,0));
-  const plannedCoef=targetPeriodMinutes>0?requiredFinalOrders/(targetPeriodMinutes/60):0;
+  const plannedFinalOrders=factOrders+remainingOrdersNeeded;
+  const plannedCoef=targetPeriodMinutes>0?plannedFinalOrders/(targetPeriodMinutes/60):0;
   const plannedIncome=targetPeriodMinutes/60*s.rate;
   const missingOrdersNow=Math.max(0,Math.ceil(factMinutes/60*s.target)-factOrders);
+  const addableMinutesNow=Math.max(0,maxMinutesForOrders(factOrders,s.target)-factMinutes);
+  const addableMinutesAfterPlan=Math.max(0,maxMinutesForOrders(plannedFinalOrders,s.target)-targetPeriodMinutes);
   const nextDay=dayData.find(x=>!x.done&&(x.remainingMinutes>0||needOrdersByIndex[x.i]>0))||dayData.find(x=>!x.done)||null;
-  return {s,dayData,factMinutes,factOrders,factCoef,factIncome,remainingMinutes,plannedFinalMinutes,minPeriodMinutes,targetPeriodMinutes,planShortfallMinutes,requiredFinalOrders,remainingOrdersNeeded,needOrdersByIndex,unallocatedOrders,plannedCoef,plannedIncome,missingOrdersNow,nextDay};
+  return {s,dayData,factMinutes,factOrders,factCoef,factIncome,remainingMinutes,plannedFinalMinutes,minPeriodMinutes,targetPeriodMinutes,planShortfallMinutes,requiredFinalOrders,remainingOrdersNeeded,needOrdersByIndex,unallocatedOrders,plannedFinalOrders,plannedCoef,plannedIncome,missingOrdersNow,addableMinutesNow,addableMinutesAfterPlan,nextDay};
 }
 
 function render(){
@@ -276,6 +285,17 @@ function render(){
   $("factCoef").className=`stat-value ${currentStatus.className}`;
   setText("coefStatus",currentStatus.text+` · минимум ${s.target.toFixed(2)}`);
   setText("factSummary",`${m.factOrders} / ${hm(m.factMinutes)}`);
+  setText("addableHours",hm(m.addableMinutesNow));
+  $("addableHours").className=`stat-value ${m.addableMinutesNow>0?"status-good":""}`;
+  if(!m.factMinutes&&!m.factOrders){
+    setText("addableHoursHint","появится после ввода часов и заказов");
+  }else if(m.addableMinutesNow>0){
+    setText("addableHoursHint",`при ${m.factOrders} заказах кэф останется не ниже ${s.target.toFixed(2)}`);
+  }else if(m.missingOrdersNow>0){
+    setText("addableHoursHint",`сначала нужно еще ${m.missingOrdersNow} заказов для кэфа ${s.target.toFixed(2)}`);
+  }else{
+    setText("addableHoursHint",`запаса пока нет · минимум ${s.target.toFixed(2)}`);
+  }
   setText("planHoursSummary",hm(m.plannedFinalMinutes));
   setText("planHoursHint",`минимум за период: ${hm(m.minPeriodMinutes)}${m.planShortfallMinutes>0?` · не хватает ${hm(m.planShortfallMinutes)}`:" · минимум выполнен"}`);
   $("planHoursSummary").className=`stat-value ${m.planShortfallMinutes>0?"status-danger":"status-good"}`;
@@ -283,7 +303,7 @@ function render(){
   setText("incomeNow",money(m.factIncome));
   setText("incomeNowHint",m.factCoef>=s.target?"выплата проходит по текущему кэфу":"выплата под риском");
   setText("forecastIncome",money(m.plannedIncome));
-  setText("forecastIncomeHint",`${m.requiredFinalOrders} заказов · итоговый кэф ${m.plannedCoef.toFixed(2)}`);
+  setText("forecastIncomeHint",`${m.plannedFinalOrders} заказов · итоговый кэф ${m.plannedCoef.toFixed(2)}${m.addableMinutesAfterPlan>0?` · запас ${hm(m.addableMinutesAfterPlan)}`:""}`);
 
   if(m.planShortfallMinutes>0){
     setText("mainAction","Добавьте часы в план");
