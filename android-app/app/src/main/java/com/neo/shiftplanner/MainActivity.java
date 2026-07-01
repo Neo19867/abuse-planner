@@ -68,7 +68,7 @@ public class MainActivity extends Activity {
         settings.setDatabaseEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setUserAgentString(settings.getUserAgentString() + " ShiftCoefPlanner/2.1.1");
+        settings.setUserAgentString(settings.getUserAgentString() + " ShiftCoefPlanner/2.1.2");
 
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);

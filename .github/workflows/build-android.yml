@@ -1,5 +1,8 @@
 name: Build Android APK
 
+permissions:
+  contents: write
+
 on:
   workflow_dispatch:
   push:
@@ -21,8 +24,22 @@ jobs:
           gradle-version: "8.9"
       - name: Build debug APK
         run: gradle -p android-app assembleDebug
+      - name: Prepare APK
+        run: cp android-app/app/build/outputs/apk/debug/app-debug.apk shift-coef-planner-v2.1.2.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: shift-coef-planner-v2.1.1
-          path: android-app/app/build/outputs/apk/debug/app-debug.apk
+          name: shift-coef-planner-v2.1.2
+          path: shift-coef-planner-v2.1.2.apk
           if-no-files-found: error
+      - name: Publish APK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view android-v2.1.2 >/dev/null 2>&1; then
+            gh release upload android-v2.1.2 shift-coef-planner-v2.1.2.apk --clobber
+          else
+            gh release create android-v2.1.2 shift-coef-planner-v2.1.2.apk \
+              --target "$GITHUB_SHA" \
+              --title "Android v2.1.2" \
+              --notes "Android-приложение калькулятора смен и коэффициента."
+          fi
