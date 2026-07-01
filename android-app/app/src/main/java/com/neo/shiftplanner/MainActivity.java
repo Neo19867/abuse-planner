@@ -7,7 +7,6 @@ import android.graphics.Bitmap;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
-import android.webkit.CookieManager;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebChromeClient;
@@ -25,9 +24,7 @@ import java.util.Set;
 public class MainActivity extends Activity {
     private static final String APP_URL = "https://neo19867.github.io/abuse-planner/";
     private static final Set<String> INTERNAL_HOSTS = new HashSet<>(Arrays.asList(
-            "neo19867.github.io",
-            "telegram.org",
-            "oauth.telegram.org"
+            "neo19867.github.io"
     ));
 
     private WebView webView;
@@ -68,11 +65,7 @@ public class MainActivity extends Activity {
         settings.setDatabaseEnabled(true);
         settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
-        settings.setUserAgentString(settings.getUserAgentString() + " ShiftCoefPlanner/2.1.2");
-
-        CookieManager cookies = CookieManager.getInstance();
-        cookies.setAcceptCookie(true);
-        cookies.setAcceptThirdPartyCookies(webView, true);
+        settings.setUserAgentString(settings.getUserAgentString() + " ShiftCoefPlanner/2.1.3");
         webView.setWebChromeClient(new WebChromeClient());
 
         webView.setWebViewClient(new WebViewClient() {
