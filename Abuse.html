@@ -111,7 +111,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.1.5";
+const APP_VERSION = "v2.1.6";
 const K_ROWS = "courierPlan_rows_v14";
 const K_SETTINGS = "courierPlan_settings_v14";
 const WEEKDAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
@@ -145,25 +145,28 @@ function parseClock(raw){
 
 function parseSlots(raw){
   const text=String(raw||"").trim();
-  if(!text) return {minutes:0,valid:true,error:""};
+  if(!text) return {minutes:0,includedGapMinutes:0,valid:true,error:""};
   const chunks=text.split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
   const ranges=[];
   for(const chunk of chunks){
     const match=chunk.match(/^(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})$/);
-    if(!match) return {minutes:0,valid:false,error:`Не распознан слот «${chunk}»`};
+    if(!match) return {minutes:0,includedGapMinutes:0,valid:false,error:`Не распознан слот «${chunk}»`};
     const start=parseClock(match[1]),endRaw=parseClock(match[2]);
-    if(start===null||endRaw===null) return {minutes:0,valid:false,error:`Неверное время в «${chunk}»`};
+    if(start===null||endRaw===null) return {minutes:0,includedGapMinutes:0,valid:false,error:`Неверное время в «${chunk}»`};
     let end=endRaw;
     if(end<start) end+=24*60;
     const duration=end-start;
-    if(duration<=0) return {minutes:0,valid:false,error:`Пустой слот «${chunk}»`};
+    if(duration<=0) return {minutes:0,includedGapMinutes:0,valid:false,error:`Пустой слот «${chunk}»`};
     ranges.push({start,end,duration});
   }
   const sorted=[...ranges].sort((a,b)=>a.start-b.start);
+  let includedGapMinutes=0;
   for(let i=1;i<sorted.length;i++){
-    if(sorted[i].start<sorted[i-1].end) return {minutes:0,valid:false,error:"Слоты пересекаются"};
+    if(sorted[i].start<sorted[i-1].end) return {minutes:0,includedGapMinutes:0,valid:false,error:"Слоты пересекаются"};
+    const gap=sorted[i].start-sorted[i-1].end;
+    if(gap>0&&gap<30) includedGapMinutes+=gap;
   }
-  return {minutes:ranges.reduce((sum,x)=>sum+x.duration,0),valid:true,error:""};
+  return {minutes:ranges.reduce((sum,x)=>sum+x.duration,0)+includedGapMinutes,includedGapMinutes,valid:true,error:""};
 }
 
 function emptyRows(){
@@ -344,10 +347,11 @@ function render(){
     const dailyStatus=statusFor(x.coef,s,x.factMinutes>0);
     const dailyIncome=x.factMinutes/60*s.rate;
     const slotError=x.parsed.valid?"":`<span class="slot-error">${escapeHtml(x.parsed.error)}</span>`;
+    const gapHint=x.parsed.includedGapMinutes>0?`<span class="day-meta">Учтено между слотами: +${hm(x.parsed.includedGapMinutes)}</span>`:"";
     tr.innerHTML=`
       <td data-label="День"><strong>${dayName(x.i)}</strong></td>
       <td data-label="План часов"><span class="time"><input type="number" inputmode="numeric" min="0" max="24" value="${planH}" onchange="updatePlan(${x.i},'h',this.value)">:<input type="number" inputmode="numeric" min="0" max="59" value="${planM}" onchange="updatePlan(${x.i},'m',this.value)"></span></td>
-      <td data-label="Слоты факт"><input class="slots" type="text" placeholder="07:30-19:30, 19:30-20:35" value="${escapeHtml(x.fs)}" onchange="updateSlots(${x.i},this.value)">${slotError}</td>
+      <td data-label="Слоты факт"><input class="slots" type="text" placeholder="07:30-19:30, 19:30-20:35" value="${escapeHtml(x.fs)}" onchange="updateSlots(${x.i},this.value)">${gapHint}${slotError}</td>
       <td data-label="Факт часов"><strong>${hm(x.factMinutes)}</strong><span class="day-meta">${money(dailyIncome)}</span></td>
       <td data-label="Заказы"><input class="orders" type="number" inputmode="numeric" min="0" value="${x.orders}" onchange="updateOrders(${x.i},this.value)"></td>
       <td data-label="Нужно заказов"><strong>${x.done?0:m.needOrdersByIndex[x.i]}</strong></td>
