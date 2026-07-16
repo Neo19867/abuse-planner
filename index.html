@@ -111,19 +111,19 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.1.6";
+const APP_VERSION = "v2.1.7";
 const K_ROWS = "courierPlan_rows_v14";
 const K_SETTINGS = "courierPlan_settings_v14";
 const WEEKDAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
 const $ = (id) => document.getElementById(id);
-const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const toMinuteInt = (value) => Math.max(0, Math.trunc(Number(value) || 0));
+const legacyHoursToMinutes = (hours) => Math.max(0, Math.round((Number(hours) || 0) * 60));
+const legacyMinutesToHours = (minutes) => Math.round((toMinuteInt(minutes) / 60) * 100) / 100;
 const money = (n) => new Intl.NumberFormat("ru-RU").format(Math.round(Number(n) || 0)) + " ₽";
 const hm = (minutes) => {
-  const m = Math.max(0, Math.round(Number(minutes) || 0));
+  const m = toMinuteInt(minutes);
   return String(Math.floor(m / 60)).padStart(2,"0") + ":" + String(m % 60).padStart(2,"0");
 };
-const hoursToMinutes = (h) => Math.max(0, Math.round((Number(h) || 0) * 60));
-const minutesToHours = (m) => r2((Number(m) || 0) / 60);
 const escapeHtml = (s) => String(s || "").replace(/[&<>"']/g,(c)=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const setText = (id,value) => { const el=$(id); if(el) el.textContent=value; };
 
@@ -170,23 +170,43 @@ function parseSlots(raw){
 }
 
 function emptyRows(){
-  return Array.from({length:14},()=>({ph:0,fs:"",fh:0,fo:0,done:false}));
+  return Array.from({length:14},()=>({phm:0,fs:"",fhm:0,fo:0,done:false}));
 }
 
+function hasOwn(obj,key){return Object.prototype.hasOwnProperty.call(Object(obj),key);}
+function rowPlanMinutes(x={}){
+  if(hasOwn(x,"phm")) return toMinuteInt(x.phm);
+  const legacy=(Number(x.ph)||0)||((Number(x.pr)||0)+(Number(x.pv)||0));
+  return legacyHoursToMinutes(legacy);
+}
+function rowFactMinutes(x={}){
+  if(hasOwn(x,"fhm")) return toMinuteInt(x.fhm);
+  const legacy=(Number(x.fh)||0)||((Number(x.fr)||0)+(Number(x.fv)||0));
+  return legacyHoursToMinutes(legacy);
+}
+function normalizeRow(x={}){
+  return {
+    phm:rowPlanMinutes(x),
+    fs:String(x.fs||""),
+    fhm:rowFactMinutes(x),
+    fo:Math.max(0,Math.round(Number(x.fo)||0)),
+    done:Boolean(x.done),
+  };
+}
+function serializeRows(rows){
+  return rows.map(row=>{
+    const x=normalizeRow(row);
+    return {...x,ph:legacyMinutesToHours(x.phm),fh:legacyMinutesToHours(x.fhm)};
+  });
+}
 function loadRows(){
   try{
     const raw=JSON.parse(localStorage.getItem(K_ROWS)||"null");
     if(!Array.isArray(raw)||raw.length!==14) return emptyRows();
-    return raw.map(x=>({
-      ph:r2((Number(x.ph)||0)||((Number(x.pr)||0)+(Number(x.pv)||0))),
-      fs:String(x.fs||""),
-      fh:r2((Number(x.fh)||0)||((Number(x.fr)||0)+(Number(x.fv)||0))),
-      fo:Math.max(0,Math.round(Number(x.fo)||0)),
-      done:Boolean(x.done),
-    }));
+    return raw.map(normalizeRow);
   }catch{return emptyRows();}
 }
-function saveRows(rows){localStorage.setItem(K_ROWS,JSON.stringify(rows));}
+function saveRows(rows){localStorage.setItem(K_ROWS,JSON.stringify(serializeRows(rows)));}
 
 function normalizeSettings(raw={}){
   return {
@@ -216,7 +236,7 @@ function writeSettings(s){
 }
 
 function distributeIntegers(total,weights){
-  const t=Math.max(0,Math.round(total||0));
+  const t=toMinuteInt(total);
   if(!weights.length) return [];
   const w=weights.map(x=>Math.max(0,Number(x)||0));
   const sum=w.reduce((a,b)=>a+b,0);
@@ -246,8 +266,8 @@ function maxMinutesForOrders(orders,target){
 function calculateModel(rows,s){
   const dayData=rows.map((row,i)=>{
     const parsed=parseSlots(row.fs);
-    const factMinutes=row.fs ? parsed.minutes : hoursToMinutes(row.fh);
-    const planMinutes=hoursToMinutes(row.ph);
+    const factMinutes=row.fs ? parsed.minutes : row.fhm;
+    const planMinutes=row.phm;
     const remainingMinutes=row.done?0:Math.max(0,planMinutes-factMinutes);
     const orders=Math.max(0,Math.round(row.fo||0));
     const coef=factMinutes>0?orders/(factMinutes/60):0;
@@ -259,7 +279,7 @@ function calculateModel(rows,s){
   const factIncome=factMinutes/60*s.rate;
   const remainingMinutes=dayData.reduce((sum,x)=>sum+x.remainingMinutes,0);
   const plannedFinalMinutes=factMinutes+remainingMinutes;
-  const minPeriodMinutes=hoursToMinutes(s.minPeriodHours);
+  const minPeriodMinutes=legacyHoursToMinutes(s.minPeriodHours);
   const targetPeriodMinutes=Math.max(minPeriodMinutes,plannedFinalMinutes);
   const planShortfallMinutes=Math.max(0,minPeriodMinutes-plannedFinalMinutes);
   const requiredFinalOrders=targetPeriodMinutes>0?Math.ceil(targetPeriodMinutes/60*s.target):0;
@@ -364,17 +384,17 @@ function render(){
 function applyBasePlan(){
   const s=readSettings(); saveSettings(s);
   const rows=loadRows();
-  rows.forEach((row,i)=>{if(!row.done) row.ph=(i%7)<5?10:0;});
+  rows.forEach((row,i)=>{if(!row.done) row.phm=(i%7)<5?600:0;});
   saveRows(rows); render();
 }
 function updatePlan(i,part,value){
-  const rows=loadRows(),current=hoursToMinutes(rows[i].ph);
+  const rows=loadRows(),current=rows[i].phm;
   let h=Math.floor(current/60),m=current%60;
   if(part==="h") h=Math.max(0,Math.min(24,Math.round(Number(value)||0)));
   if(part==="m") m=Math.max(0,Math.min(59,Math.round(Number(value)||0)));
-  rows[i].ph=minutesToHours(h*60+m); saveRows(rows); render();
+  rows[i].phm=h*60+m; saveRows(rows); render();
 }
-function updateSlots(i,value){const rows=loadRows();rows[i].fs=String(value||"").trim();const p=parseSlots(rows[i].fs);rows[i].fh=p.valid?minutesToHours(p.minutes):0;saveRows(rows);render();}
+function updateSlots(i,value){const rows=loadRows();rows[i].fs=String(value||"").trim();const p=parseSlots(rows[i].fs);rows[i].fhm=p.valid?p.minutes:0;saveRows(rows);render();}
 function updateOrders(i,value){const rows=loadRows();rows[i].fo=Math.max(0,Math.round(Number(value)||0));saveRows(rows);render();}
 function updateDone(i,value){const rows=loadRows();rows[i].done=Boolean(value);saveRows(rows);render();}
 window.updatePlan=updatePlan;window.updateSlots=updateSlots;window.updateOrders=updateOrders;window.updateDone=updateDone;
@@ -383,7 +403,7 @@ function exportPayload(){return JSON.stringify({app:"shift-coef-planner",version
 function importPayload(raw){
   let data;try{data=JSON.parse(String(raw||""));}catch{throw new Error("Неверный JSON");}
   if(!data||!Array.isArray(data.rows)||data.rows.length!==14) throw new Error("Неверный формат данных");
-  saveRows(data.rows.map(x=>({ph:r2(Number(x.ph)||0),fs:String(x.fs||""),fh:r2(Number(x.fh)||0),fo:Math.max(0,Math.round(Number(x.fo)||0)),done:Boolean(x.done)})));
+  saveRows(data.rows.map(normalizeRow));
   saveSettings(normalizeSettings(data.settings||{}));
 }
 
