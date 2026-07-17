@@ -27,6 +27,7 @@ button{cursor:pointer;font-weight:700;background:linear-gradient(180deg,#16783b,
 .stat.primary{border-color:var(--line2);background:linear-gradient(145deg,rgba(5,52,24,.9),rgba(0,16,7,.7))}
 .stat-label{font-size:12px;color:var(--muted)}.stat-value{font-size:27px;font-weight:800;margin:3px 0;text-shadow:0 0 9px rgba(80,255,130,.32)}
 .status-good{color:var(--good)}.status-warn{color:var(--warn)}.status-danger{color:var(--danger)}
+.reconcile{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:9px;align-items:end}.reconcile-result{grid-column:1/-1;border:1px solid var(--line2);border-radius:12px;padding:11px;background:rgba(0,24,10,.65);line-height:1.5}.reconcile-result strong{color:var(--text)}
 .focus{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center;border:1px solid var(--line2);border-radius:13px;padding:12px;background:linear-gradient(110deg,rgba(6,61,27,.85),rgba(0,15,7,.75))}
 .focus strong{font-size:18px}.focus-value{font-size:23px;font-weight:800;text-align:right}
 .table-wrap{border:1px solid var(--line);border-radius:13px;overflow:hidden}
@@ -75,6 +76,17 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
   </section>
 
   <section class="card">
+    <h2>Сверка с Яндексом</h2>
+    <div class="hint" style="margin-bottom:10px">Введите часы и коэффициент из статистики Яндекса. Программа оценит, сколько заказов попало именно в этот показатель.</div>
+    <div class="reconcile">
+      <div><label>Часы в Яндексе</label><input id="yandexHours" type="text" inputmode="numeric" placeholder="44:00"></div>
+      <div><label>Кэф в Яндексе</label><input id="yandexCoef" type="number" inputmode="decimal" min="0" step="0.01" placeholder="1.76"></div>
+      <button id="applyYandexEstimate" class="secondary">Учесть оценку в расчёте</button>
+      <div id="yandexReconcile" class="reconcile-result">Введите данные из Яндекса.</div>
+    </div>
+  </section>
+
+  <section class="card">
     <h2>Ближайший день</h2>
     <div id="todayPlan" class="focus"><div><strong>План пока не рассчитан</strong></div></div>
   </section>
@@ -112,7 +124,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.1.9";
+const APP_VERSION = "v2.1.10";
 const K_ROWS = "courierPlan_rows_v14";
 const K_SETTINGS = "courierPlan_settings_v14";
 const WEEKDAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
@@ -135,6 +147,8 @@ const DEFAULTS = {
   onboardingDone:true,
   hideDone:false,
   orderCorrection:0,
+  yandexHours:"",
+  yandexCoef:"",
 };
 
 function parseClock(raw){
@@ -143,6 +157,17 @@ function parseClock(raw){
   const h=Number(match[1]),m=Number(match[2]);
   if(h<0||h>23||m<0||m>59) return null;
   return h*60+m;
+}
+
+function parseDurationInput(raw){
+  const text=String(raw||"").trim();
+  if(!text) return 0;
+  if(/^\d{1,3}:\d{2}$/.test(text)){
+    const [h,m]=text.split(":").map(Number);
+    return h>=0&&m>=0&&m<60?h*60+m:0;
+  }
+  const hours=Number(text.replace(",","."));
+  return Number.isFinite(hours)&&hours>=0?Math.round(hours*60):0;
 }
 
 function parseSlots(raw){
@@ -215,6 +240,8 @@ function normalizeSettings(raw={}){
     target:Math.max(0,Number(raw.target)||1.6),
     minPeriodHours:Math.max(0,Number(raw.minPeriodHours)||90),
     orderCorrection:Math.round(Number(raw.orderCorrection)||0),
+    yandexHours:String(raw.yandexHours||""),
+    yandexCoef:String(raw.yandexCoef||""),
   };
 }
 function loadSettings(){
@@ -228,12 +255,16 @@ function readSettings(){
     target:Number($("target").value)||0,
     minPeriodHours:Math.max(0,Number($("minPeriodHours").value)||0),
     orderCorrection:Math.round(Number($("orderCorrection").value)||0),
+    yandexHours:String($("yandexHours").value||""),
+    yandexCoef:String($("yandexCoef").value||""),
     hideDone:$("hideDone").checked,
   });
 }
 function writeSettings(s){
   $("rate").value=s.rate; $("target").value=s.target; $("minPeriodHours").value=s.minPeriodHours;
   $("orderCorrection").value=s.orderCorrection;
+  $("yandexHours").value=s.yandexHours;
+  $("yandexCoef").value=s.yandexCoef;
   $("hideDone").checked=Boolean(s.hideDone);
 }
 
@@ -298,8 +329,16 @@ function calculateModel(rows,s){
   const missingOrdersNow=Math.max(0,Math.ceil(factMinutes/60*s.target)-factOrders);
   const addableMinutesNow=Math.max(0,maxMinutesForOrders(factOrders,s.target)-factMinutes);
   const addableMinutesAfterPlan=Math.max(0,maxMinutesForOrders(plannedFinalOrders,s.target)-targetPeriodMinutes);
+  const yandexMinutes=parseDurationInput(s.yandexHours);
+  const yandexCoef=Number(String(s.yandexCoef).replace(",","."))||0;
+  const yandexHasExactMinutes=/^\d{1,3}:\d{2}$/.test(String(s.yandexHours||"").trim());
+  const yandexMaxMinutes=yandexHasExactMinutes?yandexMinutes:yandexMinutes+59;
+  const yandexOrdersMin=yandexMinutes>0&&yandexCoef>0?Math.max(0,Math.ceil(yandexMinutes/60*Math.max(0,yandexCoef-.005)-1e-9)):null;
+  const yandexOrdersMax=yandexOrdersMin===null?null:Math.max(yandexOrdersMin,Math.floor(yandexMaxMinutes/60*(yandexCoef+.005)-1e-9));
+  const yandexEstimatedOrders=yandexOrdersMin===null?null:Math.round((yandexOrdersMin+yandexOrdersMax)/2);
+  const yandexOrderDifference=yandexEstimatedOrders===null?null:rawFactOrders-yandexEstimatedOrders;
   const nextDay=dayData.find(x=>!x.done&&(x.remainingMinutes>0||needOrdersByIndex[x.i]>0))||dayData.find(x=>!x.done)||null;
-  return {s,dayData,factMinutes,rawFactOrders,factOrders,factCoef,factIncome,remainingMinutes,plannedFinalMinutes,minPeriodMinutes,targetPeriodMinutes,planShortfallMinutes,requiredFinalOrders,remainingOrdersNeeded,needOrdersByIndex,unallocatedOrders,plannedFinalOrders,plannedCoef,plannedIncome,missingOrdersNow,addableMinutesNow,addableMinutesAfterPlan,nextDay};
+  return {s,dayData,factMinutes,rawFactOrders,factOrders,factCoef,factIncome,remainingMinutes,plannedFinalMinutes,minPeriodMinutes,targetPeriodMinutes,planShortfallMinutes,requiredFinalOrders,remainingOrdersNeeded,needOrdersByIndex,unallocatedOrders,plannedFinalOrders,plannedCoef,plannedIncome,missingOrdersNow,addableMinutesNow,addableMinutesAfterPlan,yandexMinutes,yandexCoef,yandexOrdersMin,yandexOrdersMax,yandexEstimatedOrders,yandexOrderDifference,nextDay};
 }
 
 function render(){
@@ -331,6 +370,16 @@ function render(){
   setText("incomeNowHint",m.factCoef>=s.target?"выплата проходит по текущему кэфу":"выплата под риском");
   setText("forecastIncome",money(m.plannedIncome));
   setText("forecastIncomeHint",`${m.plannedFinalOrders} заказов · итоговый кэф ${m.plannedCoef.toFixed(2)}${m.addableMinutesAfterPlan>0?` · запас ${hm(m.addableMinutesAfterPlan)}`:""}`);
+  const reconcile=$("yandexReconcile");
+  if(m.yandexEstimatedOrders===null){
+    reconcile.innerHTML="Введите часы и кэф из Яндекса.";
+  }else{
+    const diff=m.yandexOrderDifference;
+    const rangeText=m.yandexOrdersMin===m.yandexOrdersMax?`${m.yandexOrdersMin}`:`${m.yandexOrdersMin}–${m.yandexOrdersMax}`;
+    const missingMin=Math.max(0,m.rawFactOrders-m.yandexOrdersMax),missingMax=Math.max(0,m.rawFactOrders-m.yandexOrdersMin);
+    const differenceText=missingMin===0&&missingMax===0?"все введённые заказы, вероятно, попали в показатель":missingMin===missingMax?`примерно ${missingMin} заказ(а) не попали в кэф Яндекса`:`вероятно, не попало ${missingMin}–${missingMax} заказ(а)`;
+    reconcile.innerHTML=`<strong>Предположительно зачтено: ${rangeText} заказов</strong><br>У нас введено: ${m.rawFactOrders} заказов · ${hm(m.yandexMinutes)} часов<br><span class="${missingMin===0&&missingMax===0?"status-good":"status-warn"}">${differenceText}</span><div class="hint">Расчёт: ${hm(m.yandexMinutes)} × ${m.yandexCoef.toFixed(2)}. Для целого числа часов учтено, что Яндекс мог показать время с округлением вниз. Точное время в формате ЧЧ:ММ сузит диапазон.</div>`;
+  }
 
   if(m.planShortfallMinutes>0){
     setText("mainAction","Добавьте часы в план");
@@ -413,11 +462,17 @@ function importPayload(raw){
 let plannerBound=false;
 function bindPlanner(){
   if(plannerBound) return; plannerBound=true;
-  ["rate","target","minPeriodHours","orderCorrection","hideDone"].forEach(id=>{
+  ["rate","target","minPeriodHours","orderCorrection","yandexHours","yandexCoef","hideDone"].forEach(id=>{
     $(id).addEventListener("change",render);
   });
   $("applyPlan").onclick=applyBasePlan;
   $("recalcOrders").onclick=render;
+  $("applyYandexEstimate").onclick=()=>{
+    const s=readSettings(), rows=loadRows(), m=calculateModel(rows,s);
+    if(m.yandexEstimatedOrders===null){alert("Сначала введите часы и кэф из Яндекса");return;}
+    $("orderCorrection").value=m.yandexEstimatedOrders-m.rawFactOrders;
+    render();
+  };
   $("exportData").onclick=async()=>{const data=exportPayload();try{await navigator.clipboard.writeText(data);}catch{}prompt("Сохраните этот код и вставьте его на другом устройстве:",data);};
   $("importData").onclick=()=>{const raw=prompt("Вставьте код данных:");if(!raw)return;try{importPayload(raw);writeSettings(loadSettings());render();alert("Данные загружены");}catch(e){alert(e.message||"Ошибка загрузки");}};
   $("reset").onclick=()=>{if(!confirm("Удалить все введенные данные и настройки?"))return;localStorage.removeItem(K_ROWS);localStorage.removeItem(K_SETTINGS);writeSettings(DEFAULTS);applyBasePlan();};
