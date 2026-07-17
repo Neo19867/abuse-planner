@@ -65,7 +65,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
     <h2>Главное за 2 недели</h2>
     <div class="stats">
       <div class="stat primary"><div class="stat-label">Общий кэф</div><div id="factCoef" class="stat-value">0.00</div><div id="coefStatus" class="hint"></div></div>
-      <div class="stat primary"><div class="stat-label">Уже сделано</div><div id="factSummary" class="stat-value">0 / 00:00</div><div class="hint">заказы / часы</div></div>
+      <div class="stat primary"><div class="stat-label">Уже сделано</div><div id="factSummary" class="stat-value">0 / 00:00</div><div id="factSummaryHint" class="hint">зачётные заказы / часы</div></div>
       <div class="stat primary"><div class="stat-label">Можно добавить сейчас</div><div id="addableHours" class="stat-value">00:00</div><div id="addableHoursHint" class="hint">без падения кэфа ниже нормы</div></div>
       <div class="stat"><div class="stat-label">План часов</div><div id="planHoursSummary" class="stat-value">00:00</div><div id="planHoursHint" class="hint"></div></div>
       <div class="stat"><div class="stat-label">Нужно заказов до конца</div><div id="missingOrders" class="stat-value">0</div><div class="hint">для минимального кэфа</div></div>
@@ -86,6 +86,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
         <div><label>Ставка за час, ₽</label><input id="rate" type="number" inputmode="numeric" min="0" value="400"></div>
         <div><label>Минимальный кэф для выплаты</label><input id="target" type="number" inputmode="decimal" min="0" step="0.01" value="1.60"></div>
         <div><label>Минимум часов за 2 недели</label><input id="minPeriodHours" type="number" inputmode="decimal" min="0" step="0.25" value="90"></div>
+        <div><label>Коррекция заказов Яндекса</label><input id="orderCorrection" type="number" inputmode="numeric" step="1" value="0"><div class="hint">если Яндекс засчитал меньше: например, -2</div></div>
       </div>
       <div class="actions">
         <button id="applyPlan">Заполнить будни по 10 часов</button>
@@ -111,7 +112,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.1.8";
+const APP_VERSION = "v2.1.9";
 const K_ROWS = "courierPlan_rows_v14";
 const K_SETTINGS = "courierPlan_settings_v14";
 const WEEKDAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
@@ -133,6 +134,7 @@ const DEFAULTS = {
   minPeriodHours:90,
   onboardingDone:true,
   hideDone:false,
+  orderCorrection:0,
 };
 
 function parseClock(raw){
@@ -212,6 +214,7 @@ function normalizeSettings(raw={}){
     rate:Math.max(0,Number(raw.rate)||400),
     target:Math.max(0,Number(raw.target)||1.6),
     minPeriodHours:Math.max(0,Number(raw.minPeriodHours)||90),
+    orderCorrection:Math.round(Number(raw.orderCorrection)||0),
   };
 }
 function loadSettings(){
@@ -224,11 +227,13 @@ function readSettings(){
     rate:Number($("rate").value)||0,
     target:Number($("target").value)||0,
     minPeriodHours:Math.max(0,Number($("minPeriodHours").value)||0),
+    orderCorrection:Math.round(Number($("orderCorrection").value)||0),
     hideDone:$("hideDone").checked,
   });
 }
 function writeSettings(s){
   $("rate").value=s.rate; $("target").value=s.target; $("minPeriodHours").value=s.minPeriodHours;
+  $("orderCorrection").value=s.orderCorrection;
   $("hideDone").checked=Boolean(s.hideDone);
 }
 
@@ -271,7 +276,8 @@ function calculateModel(rows,s){
     return {...row,i,parsed,factMinutes,planMinutes,remainingMinutes,orders,coef,isWorkDay:(i%7)<5};
   });
   const factMinutes=dayData.reduce((sum,x)=>sum+x.factMinutes,0);
-  const factOrders=dayData.reduce((sum,x)=>sum+x.orders,0);
+  const rawFactOrders=dayData.reduce((sum,x)=>sum+x.orders,0);
+  const factOrders=Math.max(0,rawFactOrders+s.orderCorrection);
   const factCoef=factMinutes>0?factOrders/(factMinutes/60):0;
   const factIncome=factMinutes/60*s.rate;
   const remainingMinutes=dayData.reduce((sum,x)=>sum+x.remainingMinutes,0);
@@ -293,7 +299,7 @@ function calculateModel(rows,s){
   const addableMinutesNow=Math.max(0,maxMinutesForOrders(factOrders,s.target)-factMinutes);
   const addableMinutesAfterPlan=Math.max(0,maxMinutesForOrders(plannedFinalOrders,s.target)-targetPeriodMinutes);
   const nextDay=dayData.find(x=>!x.done&&(x.remainingMinutes>0||needOrdersByIndex[x.i]>0))||dayData.find(x=>!x.done)||null;
-  return {s,dayData,factMinutes,factOrders,factCoef,factIncome,remainingMinutes,plannedFinalMinutes,minPeriodMinutes,targetPeriodMinutes,planShortfallMinutes,requiredFinalOrders,remainingOrdersNeeded,needOrdersByIndex,unallocatedOrders,plannedFinalOrders,plannedCoef,plannedIncome,missingOrdersNow,addableMinutesNow,addableMinutesAfterPlan,nextDay};
+  return {s,dayData,factMinutes,rawFactOrders,factOrders,factCoef,factIncome,remainingMinutes,plannedFinalMinutes,minPeriodMinutes,targetPeriodMinutes,planShortfallMinutes,requiredFinalOrders,remainingOrdersNeeded,needOrdersByIndex,unallocatedOrders,plannedFinalOrders,plannedCoef,plannedIncome,missingOrdersNow,addableMinutesNow,addableMinutesAfterPlan,nextDay};
 }
 
 function render(){
@@ -305,6 +311,7 @@ function render(){
   $("factCoef").className=`stat-value ${currentStatus.className}`;
   setText("coefStatus",currentStatus.text+` · минимум ${s.target.toFixed(2)}`);
   setText("factSummary",`${m.factOrders} / ${hm(m.factMinutes)}`);
+  setText("factSummaryHint",s.orderCorrection?`введено ${m.rawFactOrders}, коррекция ${s.orderCorrection>0?"+":""}${s.orderCorrection}`:"зачётные заказы / часы");
   setText("addableHours",hm(m.addableMinutesNow));
   $("addableHours").className=`stat-value ${m.addableMinutesNow>0?"status-good":""}`;
   if(!m.factMinutes&&!m.factOrders){
@@ -406,7 +413,7 @@ function importPayload(raw){
 let plannerBound=false;
 function bindPlanner(){
   if(plannerBound) return; plannerBound=true;
-  ["rate","target","minPeriodHours","hideDone"].forEach(id=>{
+  ["rate","target","minPeriodHours","orderCorrection","hideDone"].forEach(id=>{
     $(id).addEventListener("change",render);
   });
   $("applyPlan").onclick=applyBasePlan;
