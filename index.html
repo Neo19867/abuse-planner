@@ -124,7 +124,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.1.10";
+const APP_VERSION = "v2.1.11";
 const K_ROWS = "courierPlan_rows_v14";
 const K_SETTINGS = "courierPlan_settings_v14";
 const WEEKDAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
@@ -470,7 +470,7 @@ function bindPlanner(){
   $("applyYandexEstimate").onclick=()=>{
     const s=readSettings(), rows=loadRows(), m=calculateModel(rows,s);
     if(m.yandexEstimatedOrders===null){alert("Сначала введите часы и кэф из Яндекса");return;}
-    $("orderCorrection").value=m.yandexEstimatedOrders-m.rawFactOrders;
+    $("orderCorrection").value=m.yandexOrdersMin-m.rawFactOrders;
     render();
   };
   $("exportData").onclick=async()=>{const data=exportPayload();try{await navigator.clipboard.writeText(data);}catch{}prompt("Сохраните этот код и вставьте его на другом устройстве:",data);};
