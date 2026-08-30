@@ -95,9 +95,9 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
     <details>
       <summary>Настройки расчета</summary>
       <div class="settings-grid" style="margin-top:12px">
-        <div><label>Ставка за час, ₽</label><input id="rate" type="number" inputmode="numeric" min="0" value="400"></div>
+        <div><label>Ставка за час, ₽</label><input id="rate" type="number" inputmode="numeric" min="0" value="310"></div>
         <div><label>Минимальный кэф для выплаты</label><input id="target" type="number" inputmode="decimal" min="0" step="0.01" value="1.60"></div>
-        <div><label>Минимум часов за 2 недели</label><input id="minPeriodHours" type="number" inputmode="decimal" min="0" step="0.25" value="90"></div>
+        <div><label>Минимум часов за 2 недели</label><input id="minPeriodHours" type="number" inputmode="decimal" min="0" step="0.25" value="80"></div>
         <div><label>Коррекция заказов Яндекса</label><input id="orderCorrection" type="number" inputmode="numeric" step="1" value="0"><div class="hint">если Яндекс засчитал меньше: например, -2</div></div>
       </div>
       <div class="actions">
@@ -124,10 +124,12 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.1.11";
+const APP_VERSION = "v2.1.12";
+const SETTINGS_VERSION = 2;
 const K_ROWS = "courierPlan_rows_v14";
 const K_SETTINGS = "courierPlan_settings_v14";
 const WEEKDAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+const PERIOD_START_WEEKDAY = 5;
 const $ = (id) => document.getElementById(id);
 const toMinuteInt = (value) => Math.max(0, Math.trunc(Number(value) || 0));
 const legacyHoursToMinutes = (hours) => Math.max(0, Math.round((Number(hours) || 0) * 60));
@@ -141,14 +143,15 @@ const escapeHtml = (s) => String(s || "").replace(/[&<>"']/g,(c)=>({"&":"&amp;",
 const setText = (id,value) => { const el=$(id); if(el) el.textContent=value; };
 
 const DEFAULTS = {
-  rate:400,
+  rate:310,
   target:1.6,
-  minPeriodHours:90,
+  minPeriodHours:80,
   onboardingDone:true,
   hideDone:false,
   orderCorrection:0,
   yandexHours:"",
   yandexCoef:"",
+  settingsVersion:SETTINGS_VERSION,
 };
 
 function parseClock(raw){
@@ -233,15 +236,19 @@ function loadRows(){
 function saveRows(rows){localStorage.setItem(K_ROWS,JSON.stringify(serializeRows(rows)));}
 
 function normalizeSettings(raw={}){
+  const migrated=Number(raw.settingsVersion)===SETTINGS_VERSION
+    ? raw
+    : {...raw,rate:DEFAULTS.rate,minPeriodHours:DEFAULTS.minPeriodHours,settingsVersion:SETTINGS_VERSION};
   return {
     ...DEFAULTS,
-    ...raw,
-    rate:Math.max(0,Number(raw.rate)||400),
-    target:Math.max(0,Number(raw.target)||1.6),
-    minPeriodHours:Math.max(0,Number(raw.minPeriodHours)||90),
-    orderCorrection:Math.round(Number(raw.orderCorrection)||0),
-    yandexHours:String(raw.yandexHours||""),
-    yandexCoef:String(raw.yandexCoef||""),
+    ...migrated,
+    rate:Math.max(0,Number(migrated.rate)||DEFAULTS.rate),
+    target:Math.max(0,Number(migrated.target)||DEFAULTS.target),
+    minPeriodHours:Math.max(0,Number(migrated.minPeriodHours)||DEFAULTS.minPeriodHours),
+    orderCorrection:Math.round(Number(migrated.orderCorrection)||0),
+    yandexHours:String(migrated.yandexHours||""),
+    yandexCoef:String(migrated.yandexCoef||""),
+    settingsVersion:SETTINGS_VERSION,
   };
 }
 function loadSettings(){
@@ -283,7 +290,8 @@ function distributeIntegers(total,weights){
   return out;
 }
 
-function dayName(i){return `Неделя ${Math.floor(i/7)+1} · ${WEEKDAYS[i%7]}`;}
+function weekdayIndex(i){return (PERIOD_START_WEEKDAY+i)%7;}
+function dayName(i){return `Неделя ${Math.floor(i/7)+1} · ${WEEKDAYS[weekdayIndex(i)]}`;}
 function statusFor(coef,s,hasHours){
   if(!hasHours) return {text:"Нет данных",className:"muted"};
   if(coef>=s.target) return {text:"Норма",className:"status-good"};
@@ -304,7 +312,7 @@ function calculateModel(rows,s){
     const remainingMinutes=row.done?0:Math.max(0,planMinutes-factMinutes);
     const orders=Math.max(0,Math.round(row.fo||0));
     const coef=factMinutes>0?orders/(factMinutes/60):0;
-    return {...row,i,parsed,factMinutes,planMinutes,remainingMinutes,orders,coef,isWorkDay:(i%7)<5};
+    return {...row,i,parsed,factMinutes,planMinutes,remainingMinutes,orders,coef,isWorkDay:weekdayIndex(i)<5};
   });
   const factMinutes=dayData.reduce((sum,x)=>sum+x.factMinutes,0);
   const rawFactOrders=dayData.reduce((sum,x)=>sum+x.orders,0);
@@ -436,7 +444,7 @@ function render(){
 function applyBasePlan(){
   const s=readSettings(); saveSettings(s);
   const rows=loadRows();
-  rows.forEach((row,i)=>{if(!row.done) row.phm=(i%7)<5?600:0;});
+  rows.forEach((row,i)=>{if(!row.done) row.phm=weekdayIndex(i)<5?600:0;});
   saveRows(rows); render();
 }
 function updatePlan(i,part,value){
