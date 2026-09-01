@@ -53,6 +53,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
   <section class="card">
     <h1>План смен и кэфа</h1>
     <div id="appVersion" class="version">Версия: -</div>
+    <div id="proUchetImportStatus" class="hint" style="display:none;margin-top:6px"></div>
   </section>
 
   <section class="card">
@@ -125,11 +126,12 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.1.14";
+const APP_VERSION = "v2.1.15";
 const SETTINGS_VERSION = 3;
 const PLAN_COEF_RESERVE = 0.01;
 const K_ROWS = "courierPlan_rows_v14";
 const K_SETTINGS = "courierPlan_settings_v14";
+const K_PERIOD_META = "courierPlan_period_v1";
 const WEEKDAYS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
 const PERIOD_START_WEEKDAY = 5;
 const $ = (id) => document.getElementById(id);
@@ -310,8 +312,29 @@ function distributeIntegers(total,weights){
   return out;
 }
 
-function weekdayIndex(i){return (PERIOD_START_WEEKDAY+i)%7;}
-function dayName(i){return `Неделя ${Math.floor(i/7)+1} · ${WEEKDAYS[weekdayIndex(i)]}`;}
+function loadPeriodMeta(){
+  try{
+    const value=JSON.parse(localStorage.getItem(K_PERIOD_META)||"null");
+    return value&&/^\d{4}-\d{2}-\d{2}$/.test(value.start||"")?value:null;
+  }catch{return null;}
+}
+function importedDay(i){
+  const meta=loadPeriodMeta();
+  if(!meta) return null;
+  const date=new Date(`${meta.start}T12:00:00`);
+  if(Number.isNaN(date.getTime())) return null;
+  date.setDate(date.getDate()+i);
+  return date;
+}
+function weekdayIndex(i){
+  const date=importedDay(i);
+  return date?(date.getDay()+6)%7:(PERIOD_START_WEEKDAY+i)%7;
+}
+function dayName(i){
+  const date=importedDay(i);
+  const suffix=date?` · ${date.toLocaleDateString("ru-RU",{day:"numeric",month:"short"})}`:"";
+  return `Неделя ${Math.floor(i/7)+1} · ${WEEKDAYS[weekdayIndex(i)]}${suffix}`;
+}
 function statusFor(coef,s,hasHours){
   if(!hasHours) return {text:"Нет данных",className:"muted"};
   if(coef>=s.target) return {text:"Норма",className:"status-good"};
@@ -500,6 +523,51 @@ function importPayload(raw){
   saveSettings(normalizeSettings(data.settings||{}));
 }
 
+function decodeBase64UrlUtf8(value){
+  const normalized=String(value||"").replace(/-/g,"+").replace(/_/g,"/");
+  const padded=normalized+"=".repeat((4-normalized.length%4)%4);
+  const bytes=Uint8Array.from(atob(padded),c=>c.charCodeAt(0));
+  return new TextDecoder().decode(bytes);
+}
+function weekdayIndexForDate(value,fallbackIndex){
+  const date=new Date(`${String(value||"")}T12:00:00`);
+  return Number.isNaN(date.getTime())?(PERIOD_START_WEEKDAY+fallbackIndex)%7:(date.getDay()+6)%7;
+}
+function importFromProUchetHash(){
+  const prefix="#pro-uchet=";
+  if(!location.hash.startsWith(prefix)) return null;
+  try{
+    const data=JSON.parse(decodeBase64UrlUtf8(location.hash.slice(prefix.length)));
+    if(!data||data.app!=="pro-uchet"||!data.period||!Array.isArray(data.rows)||data.rows.length!==14){
+      throw new Error("Неверный формат данных Про Учёта");
+    }
+    const previousMeta=loadPeriodMeta();
+    const samePeriod=previousMeta&&previousMeta.start===data.period.start;
+    const previousRows=loadRows();
+    const mergedSettings=normalizeSettings({...loadSettings(),...(data.settings||{})});
+    const weekdayMinutes=Math.round(mergedSettings.weekdayPlanHours*60);
+    const rows=data.rows.map((incoming,i)=>{
+      const fact=normalizeRow(incoming);
+      const planMinutes=samePeriod
+        ? previousRows[i].phm
+        : weekdayIndexForDate(incoming.date,i)<5?weekdayMinutes:0;
+      return {...fact,phm:planMinutes};
+    });
+    saveSettings(mergedSettings);
+    saveRows(rows);
+    localStorage.setItem(K_PERIOD_META,JSON.stringify({
+      start:String(data.period.start||""),
+      end:String(data.period.end||""),
+      importedAt:String(data.exportedAt||new Date().toISOString())
+    }));
+    history.replaceState(null,"",location.pathname+location.search);
+    return data;
+  }catch(error){
+    history.replaceState(null,"",location.pathname+location.search);
+    return {error:error&&error.message?error.message:"Не удалось импортировать данные"};
+  }
+}
+
 let plannerBound=false;
 function bindPlanner(){
   if(plannerBound) return; plannerBound=true;
@@ -526,7 +594,22 @@ function setupMatrix(){
 }
 
 function showApp(){writeSettings(loadSettings());setText("appVersion",`Версия: ${APP_VERSION}`);if(!localStorage.getItem(K_ROWS)){saveRows(emptyRows());applyBasePlan();}bindPlanner();render();}
-function bootstrap(){setupMatrix();showApp();}
+function bootstrap(){
+  setupMatrix();
+  const imported=importFromProUchetHash();
+  showApp();
+  if(imported){
+    const status=$("proUchetImportStatus");
+    status.style.display="block";
+    if(imported.error){
+      status.className="hint status-danger";
+      status.textContent=`Импорт не выполнен: ${imported.error}`;
+    }else{
+      status.className="hint status-good";
+      status.textContent=`✓ Данные Про Учёта загружены: ${imported.period.start} — ${imported.period.end}`;
+    }
+  }
+}
 bootstrap();
 </script>
 </body>
