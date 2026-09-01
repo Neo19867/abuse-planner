@@ -123,7 +123,7 @@ function payload(start, orderBase = 1) {
     },
     rows: Array.from({length: 14}, (_, index) => ({
       date: isoDay(start, index),
-      fs: index === 0 ? "08:00-10:30" : "",
+      fs: index === 0 ? "08:00-10:31" : "",
       breaks: "",
       fhm: index === 0 ? 150 : 0,
       fo: index === 0 ? orderBase : 0,
@@ -138,8 +138,10 @@ let rows = JSON.parse(storage.getItem("courierPlan_rows_v14"));
 let settings = JSON.parse(storage.getItem("courierPlan_settings_v14"));
 assert.strictEqual(rows.length, 14);
 assert.strictEqual(rows[0].fo, 4);
-assert.strictEqual(rows[0].fs, "08:00-10:30");
+assert.strictEqual(rows[0].fs, "08:00-10:31");
 assert.strictEqual(rows[0].fhm, 150);
+assert.strictEqual(rows[0].afm, 150);
+assert.strictEqual(first.elements.get("factSummary").textContent, "4 / 02:30");
 assert.strictEqual(settings.rate, 400);
 assert.strictEqual(settings.target, 1.6);
 assert.match(first.elements.get("proUchetImportStatus").textContent, /2026-08-29/);

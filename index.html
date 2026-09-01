@@ -126,7 +126,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.1.15";
+const APP_VERSION = "v2.1.16";
 const SETTINGS_VERSION = 3;
 const PLAN_COEF_RESERVE = 0.01;
 const K_ROWS = "courierPlan_rows_v14";
@@ -235,6 +235,7 @@ function normalizeRow(x={}){
     fs:String(x.fs||""),
     breaks:String(x.breaks||x.pauses||""),
     fhm:rowFactMinutes(x),
+    afm:hasOwn(x,"afm")?toMinuteInt(x.afm):0,
     fo:Math.max(0,Math.round(Number(x.fo)||0)),
     done:Boolean(x.done),
   };
@@ -352,8 +353,10 @@ function calculateModel(rows,s){
   const dayData=rows.map((row,i)=>{
     const parsed=parseSlots(row.fs);
     const breaksParsed=parseBreaks(row.breaks);
-    const grossFactMinutes=row.fs ? parsed.minutes : row.fhm;
-    const factMinutes=breaksParsed.valid?Math.max(0,grossFactMinutes-breaksParsed.minutes):grossFactMinutes;
+    const grossFactMinutes=row.afm>0?row.afm:(row.fs ? parsed.minutes : row.fhm);
+    const factMinutes=row.afm>0
+      ? row.afm
+      : breaksParsed.valid?Math.max(0,grossFactMinutes-breaksParsed.minutes):grossFactMinutes;
     const breaksExceedWork=breaksParsed.valid&&breaksParsed.minutes>grossFactMinutes;
     const planMinutes=row.phm;
     const remainingMinutes=row.done?0:Math.max(0,planMinutes-factMinutes);
@@ -509,8 +512,8 @@ function updatePlan(i,part,value){
   if(part==="m") m=Math.max(0,Math.min(59,Math.round(Number(value)||0)));
   rows[i].phm=h*60+m; saveRows(rows); render();
 }
-function updateSlots(i,value){const rows=loadRows();rows[i].fs=String(value||"").trim();const p=parseSlots(rows[i].fs);rows[i].fhm=p.valid?p.minutes:0;saveRows(rows);render();}
-function updateBreaks(i,value){const rows=loadRows();rows[i].breaks=String(value||"").trim();saveRows(rows);render();}
+function updateSlots(i,value){const rows=loadRows();rows[i].fs=String(value||"").trim();const p=parseSlots(rows[i].fs);rows[i].fhm=p.valid?p.minutes:0;rows[i].afm=0;saveRows(rows);render();}
+function updateBreaks(i,value){const rows=loadRows();rows[i].breaks=String(value||"").trim();rows[i].afm=0;saveRows(rows);render();}
 function updateOrders(i,value){const rows=loadRows();rows[i].fo=Math.max(0,Math.round(Number(value)||0));saveRows(rows);render();}
 function updateDone(i,value){const rows=loadRows();rows[i].done=Boolean(value);saveRows(rows);render();}
 window.updatePlan=updatePlan;window.updateSlots=updateSlots;window.updateBreaks=updateBreaks;window.updateOrders=updateOrders;window.updateDone=updateDone;
@@ -551,7 +554,7 @@ function importFromProUchetHash(){
       const planMinutes=samePeriod
         ? previousRows[i].phm
         : weekdayIndexForDate(incoming.date,i)<5?weekdayMinutes:0;
-      return {...fact,phm:planMinutes};
+      return {...fact,phm:planMinutes,afm:toMinuteInt(incoming.fhm)};
     });
     saveSettings(mergedSettings);
     saveRows(rows);
