@@ -33,7 +33,7 @@ button{cursor:pointer;font-weight:700;background:linear-gradient(180deg,#16783b,
 .table-wrap{border:1px solid var(--line);border-radius:13px;overflow:hidden}
 table{width:100%;border-collapse:collapse}th,td{padding:8px 6px;text-align:center;border-bottom:1px solid var(--line)}th{background:rgba(0,24,10,.95);color:#94ffad;font-size:12px}
 tr.done td{background:rgba(31,132,61,.22)}.time{display:inline-flex;align-items:center;gap:4px}.time input{width:53px;text-align:center;padding:7px;min-height:36px}
-.slots{min-width:245px}.orders{max-width:96px;text-align:center}.day-status{font-size:12px;white-space:nowrap}.day-meta{display:block;color:var(--muted);font-size:11px;margin-top:3px}
+.slots{min-width:245px}.breaks{min-width:130px}.orders{max-width:96px;text-align:center}.day-status{font-size:12px;white-space:nowrap}.day-meta{display:block;color:var(--muted);font-size:11px;margin-top:3px}
 input[type=checkbox]{width:19px;height:19px;min-height:0;padding:0;accent-color:var(--accent);filter:drop-shadow(0 0 4px rgba(50,255,117,.45))}
 .slot-error{display:block;color:var(--danger);font-size:11px;margin-top:4px;text-align:left}.empty{text-align:center;color:var(--muted);padding:18px}
 details summary{cursor:pointer;font-weight:700;list-style:none}details summary::-webkit-details-marker{display:none}details summary::after{content:" +";color:var(--muted)}details[open] summary::after{content:" -"}
@@ -43,7 +43,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
   .table-wrap{border:0;overflow:visible}table,tbody,tr,td{display:block;width:100%}thead{display:none}
   tr{border:1px solid var(--line);border-radius:13px;padding:8px;margin:9px 0;background:rgba(0,18,8,.82)}
   td{display:grid;grid-template-columns:minmax(105px,42%) 1fr;gap:8px;align-items:center;text-align:right;padding:8px 4px;border-bottom:1px dashed rgba(39,151,72,.4)}
-  td:last-child{border:0}td::before{content:attr(data-label);text-align:left;color:var(--muted);font-size:12px}.slots{min-width:0}.orders{max-width:none}.time{justify-self:end}
+  td:last-child{border:0}td::before{content:attr(data-label);text-align:left;color:var(--muted);font-size:12px}.slots,.breaks{min-width:0}.orders{max-width:none}.time{justify-self:end}
 }
 </style>
 </head>
@@ -117,7 +117,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
     <label style="display:flex;align-items:center;gap:7px"><input id="hideDone" type="checkbox"> Скрыть завершенные дни</label>
     <div class="table-wrap">
       <table>
-        <thead><tr><th>День</th><th>План часов</th><th>Слоты факт</th><th>Факт</th><th>Заказы</th><th>Нужно заказов</th><th>Кэф и статус</th><th>Готово</th></tr></thead>
+        <thead><tr><th>День</th><th>План часов</th><th>Слоты факт</th><th>Паузы, мин</th><th>Факт</th><th>Заказы</th><th>Нужно заказов</th><th>Кэф и статус</th><th>Готово</th></tr></thead>
         <tbody id="rows"></tbody>
       </table>
     </div>
@@ -125,7 +125,7 @@ details summary{cursor:pointer;font-weight:700;list-style:none}details summary::
 </main>
 
 <script>
-const APP_VERSION = "v2.1.13";
+const APP_VERSION = "v2.1.14";
 const SETTINGS_VERSION = 3;
 const PLAN_COEF_RESERVE = 0.01;
 const K_ROWS = "courierPlan_rows_v14";
@@ -199,8 +199,21 @@ function parseSlots(raw){
   return {minutes:ranges.reduce((sum,x)=>sum+x.duration,0),valid:true,error:""};
 }
 
+function parseBreaks(raw){
+  const text=String(raw||"").trim();
+  if(!text) return {minutes:0,valid:true,error:""};
+  const chunks=text.split(/[,;+\s]+/).filter(Boolean);
+  let minutes=0;
+  for(const chunk of chunks){
+    if(!/^\d+$/.test(chunk)) return {minutes:0,valid:false,error:`Неверная пауза «${chunk}»`};
+    minutes+=Number(chunk);
+  }
+  if(minutes>24*60) return {minutes:0,valid:false,error:"Сумма пауз больше 24 часов"};
+  return {minutes,valid:true,error:""};
+}
+
 function emptyRows(){
-  return Array.from({length:14},()=>({phm:0,fs:"",fhm:0,fo:0,done:false}));
+  return Array.from({length:14},()=>({phm:0,fs:"",breaks:"",fhm:0,fo:0,done:false}));
 }
 
 function hasOwn(obj,key){return Object.prototype.hasOwnProperty.call(Object(obj),key);}
@@ -218,6 +231,7 @@ function normalizeRow(x={}){
   return {
     phm:rowPlanMinutes(x),
     fs:String(x.fs||""),
+    breaks:String(x.breaks||x.pauses||""),
     fhm:rowFactMinutes(x),
     fo:Math.max(0,Math.round(Number(x.fo)||0)),
     done:Boolean(x.done),
@@ -314,12 +328,15 @@ function calculateModel(rows,s){
   const planTarget=Math.round((s.target+PLAN_COEF_RESERVE)*100)/100;
   const dayData=rows.map((row,i)=>{
     const parsed=parseSlots(row.fs);
-    const factMinutes=row.fs ? parsed.minutes : row.fhm;
+    const breaksParsed=parseBreaks(row.breaks);
+    const grossFactMinutes=row.fs ? parsed.minutes : row.fhm;
+    const factMinutes=breaksParsed.valid?Math.max(0,grossFactMinutes-breaksParsed.minutes):grossFactMinutes;
+    const breaksExceedWork=breaksParsed.valid&&breaksParsed.minutes>grossFactMinutes;
     const planMinutes=row.phm;
     const remainingMinutes=row.done?0:Math.max(0,planMinutes-factMinutes);
     const orders=Math.max(0,Math.round(row.fo||0));
     const coef=factMinutes>0?orders/(factMinutes/60):0;
-    return {...row,i,parsed,factMinutes,planMinutes,remainingMinutes,orders,coef,isWorkDay:weekdayIndex(i)<5};
+    return {...row,i,parsed,breaksParsed,breaksExceedWork,grossFactMinutes,factMinutes,planMinutes,remainingMinutes,orders,coef,isWorkDay:weekdayIndex(i)<5};
   });
   const factMinutes=dayData.reduce((sum,x)=>sum+x.factMinutes,0);
   const rawFactOrders=dayData.reduce((sum,x)=>sum+x.orders,0);
@@ -435,11 +452,18 @@ function render(){
     const dailyStatus=statusFor(x.coef,s,x.factMinutes>0);
     const dailyIncome=x.factMinutes/60*s.rate;
     const slotError=x.parsed.valid?"":`<span class="slot-error">${escapeHtml(x.parsed.error)}</span>`;
+    const breaksError=!x.breaksParsed.valid
+      ? `<span class="slot-error">${escapeHtml(x.breaksParsed.error)}</span>`
+      : x.breaksExceedWork
+        ? '<span class="slot-error">Паузы превышают длительность слотов</span>'
+        : "";
+    const breaksMeta=x.breaksParsed.minutes?` · паузы ${hm(x.breaksParsed.minutes)}`:"";
     tr.innerHTML=`
       <td data-label="День"><strong>${dayName(x.i)}</strong></td>
       <td data-label="План часов"><span class="time"><input type="number" inputmode="numeric" min="0" max="24" value="${planH}" onchange="updatePlan(${x.i},'h',this.value)">:<input type="number" inputmode="numeric" min="0" max="59" value="${planM}" onchange="updatePlan(${x.i},'m',this.value)"></span></td>
       <td data-label="Слоты факт"><input class="slots" type="text" placeholder="07:30-19:30, 19:30-20:35" value="${escapeHtml(x.fs)}" onchange="updateSlots(${x.i},this.value)">${slotError}</td>
-      <td data-label="Факт часов"><strong>${hm(x.factMinutes)}</strong><span class="day-meta">${money(dailyIncome)}</span></td>
+      <td data-label="Паузы, мин"><input class="breaks" type="text" inputmode="text" placeholder="15, 20, 10" value="${escapeHtml(x.breaks)}" onchange="updateBreaks(${x.i},this.value)">${breaksError}</td>
+      <td data-label="Факт часов"><strong>${hm(x.factMinutes)}</strong><span class="day-meta">${money(dailyIncome)}${breaksMeta}</span></td>
       <td data-label="Заказы"><input class="orders" type="number" inputmode="numeric" min="0" value="${x.orders}" onchange="updateOrders(${x.i},this.value)"></td>
       <td data-label="Нужно заказов"><strong>${x.done?0:m.needOrdersByIndex[x.i]}</strong></td>
       <td data-label="Кэф и статус"><span class="day-status ${dailyStatus.className}">${x.coef.toFixed(2)} · ${dailyStatus.text}</span></td>
@@ -463,9 +487,10 @@ function updatePlan(i,part,value){
   rows[i].phm=h*60+m; saveRows(rows); render();
 }
 function updateSlots(i,value){const rows=loadRows();rows[i].fs=String(value||"").trim();const p=parseSlots(rows[i].fs);rows[i].fhm=p.valid?p.minutes:0;saveRows(rows);render();}
+function updateBreaks(i,value){const rows=loadRows();rows[i].breaks=String(value||"").trim();saveRows(rows);render();}
 function updateOrders(i,value){const rows=loadRows();rows[i].fo=Math.max(0,Math.round(Number(value)||0));saveRows(rows);render();}
 function updateDone(i,value){const rows=loadRows();rows[i].done=Boolean(value);saveRows(rows);render();}
-window.updatePlan=updatePlan;window.updateSlots=updateSlots;window.updateOrders=updateOrders;window.updateDone=updateDone;
+window.updatePlan=updatePlan;window.updateSlots=updateSlots;window.updateBreaks=updateBreaks;window.updateOrders=updateOrders;window.updateDone=updateDone;
 
 function exportPayload(){return JSON.stringify({app:"shift-coef-planner",version:APP_VERSION,exportedAt:new Date().toISOString(),settings:loadSettings(),rows:loadRows()});}
 function importPayload(raw){
